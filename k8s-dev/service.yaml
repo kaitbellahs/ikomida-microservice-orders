@@ -1,0 +1,13 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: orders-service
+  labels:
+    app: orders-service
+  namespace: ikomida
+spec:
+  selector:
+     app: orders
+  ports:
+  - protocol: TCP
+    port: 1988
