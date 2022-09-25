@@ -87,7 +87,7 @@ export default class Orders {
       try {
         userCreditCard = orderModel?.userPayment?.userCreditCard;
       } catch (error: any) {
-        console.error(error);
+        this.logger.error(error);
       }
       const user = Types.Classes.CUser.init(
         '',
@@ -255,7 +255,7 @@ export default class Orders {
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_PAYMENT_EXCEPTION,
             exception?.message,
           ).log(this.logger);
-          console.error(exception);
+          this.logger.error(exception);
           const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_ERROR);
           return error.logAndReturn(this.logger);
         }
