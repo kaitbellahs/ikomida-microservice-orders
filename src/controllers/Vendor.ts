@@ -134,7 +134,8 @@ export default class Orders {
       const payment = Types.Classes.CPaymentMethod.init(
         orderModel?.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
         userCreditCard?.brand ?? 'Unknown',
-        userCreditCard?.lastDigits ?? 0,
+        userCreditCard?.lastDigits ?? '',
+        userCreditCard?.firstDigits ?? '',
       );
 
       const preparation = Types.Classes.COrderPreparation.init(
