@@ -1,6 +1,7 @@
 import { Domain, Utils, BackendTypes, Logics, Types, DBModels } from '@ikomida/shared-backend';
-import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError';
 import axios from 'axios';
+import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError';
+
 export default class Orders {
   logger;
   limit = 10;
@@ -8,6 +9,11 @@ export default class Orders {
   constructor(logger: Utils.Logger) {
     this.logger = logger;
   }
+
+  private IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST: IiKomidaErrorModel = {
+    code: 'POS001',
+    message: 'As opções do produto que você selecionou não foram localizadas!',
+  };
 
   async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
     const where =
@@ -40,6 +46,12 @@ export default class Orders {
                 {
                   model: DBModels.OrderProductModel,
                   required: false,
+                  include: [
+                    {
+                      model: DBModels.OrderProductOptionModel,
+                      required: false,
+                    },
+                  ],
                 },
                 {
                   model: DBModels.UserPaymentModel,
@@ -83,12 +95,30 @@ export default class Orders {
 
       const products =
         orderModel.orderProducts?.map((orderProduct) => {
+          const orderProductOptions =
+            orderProduct.orderProductOptions?.map((orderProductOption) => {
+              return Types.Classes.CProductOption.init(
+                orderProductOption.name ?? '-',
+                false,
+                orderProductOption.price ?? 0,
+                orderProductOption.units ?? 0,
+                0,
+              );
+            }) ?? [];
           return Types.Classes.CProduct.init(
             orderProduct?.title ?? '-',
             orderProduct?.price ?? 0,
             orderProduct?.discount ?? 0,
             orderProduct?.discountType ?? Types.Types.TDiscount.NO,
             orderProduct?.quantity ?? 0,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            orderProductOptions,
           );
         }) ?? [];
       const address = Types.Classes.CAddress.init(
@@ -152,9 +182,24 @@ export default class Orders {
   }
 
   async newOrder(identity: Types.Classes.CUser, input: any) {
+    const transaction = await Domain.SqlDB.sequelize.transaction();
     try {
-      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
+      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input);
       const productsID = [...new Set(payload?.products?.map((item: Types.Classes.CProduct) => item.id))];
+      const productOptionsID: { productId: string | undefined; optionsId: Set<string> }[] = [];
+      for (const product of payload?.products ?? []) {
+        productOptionsID.push({
+          productId: product.id,
+          optionsId: new Set(
+            (product.options ?? [])
+              .filter(
+                (productOption) =>
+                  productOption.id !== '' && productOption.id !== null && productOption.id !== undefined,
+              )
+              .map((productOption: Types.Classes.CProductOption) => productOption.id!),
+          ),
+        });
+      }
       const includeCoupon = payload?.coupon?.id
         ? [
           {
@@ -220,6 +265,17 @@ export default class Orders {
                 [Domain.SqlDB.Op.in]: productsID,
               },
             },
+            include: [
+              {
+                model: DBModels.ProductOptionModel,
+                required: false,
+                where: {
+                  id: {
+                    [Domain.SqlDB.Op.in]: [...productOptionsID.flatMap((product) => product.optionsId)],
+                  },
+                },
+              },
+            ],
             required: false,
           },
           {
@@ -248,15 +304,14 @@ export default class Orders {
           ...includeCoupon,
         ],
       });
+
       if (!contractModel) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_CONTRACT);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_CONTRACT);
       }
 
       const ordersLimit = contractModel?.plan?.orders ?? -1;
       if (ordersLimit !== 0 && (contractModel?.orders?.length ?? 0) >= ordersLimit) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_LIMIT_EXCEEDED, ordersLimit);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_LIMIT_EXCEEDED, ordersLimit);
       }
 
       const ordersTotal = contractModel?.orders?.map(
@@ -265,29 +320,25 @@ export default class Orders {
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0;
       const billingLimit = contractModel?.plan?.billing ?? 0 ?? -1;
       if (billingLimit !== 0 && (billing ?? 0) >= billingLimit) {
-        const error = new Utils.iKomidaError(
+        throw new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_BILLING_LIMIT_EXCEEDED,
           billingLimit,
         );
-        return error.logAndReturn(this.logger);
       }
       const vendorSettingsModel = contractModel?.vendorSettings;
       if (!vendorSettingsModel) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY);
       }
       const object = {
         hours: vendorSettingsModel?.businessHours,
         days: vendorSettingsModel?.businessDays,
       } as Types.Classes.CBusinessTime;
       if (!Logics.DateTime.isBusinessTime(object)) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDER_SERVICE_NEW_ORDER_OUT_OF_SERVICE);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDER_SERVICE_NEW_ORDER_OUT_OF_SERVICE);
       }
       const userModels = contractModel.users;
       if (!userModels || userModels.length !== 1) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_USER);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_USER);
       }
       const userModel = userModels[0];
       let subtotal = 0;
@@ -296,31 +347,34 @@ export default class Orders {
         this.logger.warn(
           `"productModels.length:", ${productModels?.length}, "productsID.length:", ${productsID?.length}`,
         );
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_NOT_EXIST);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_NOT_EXIST);
       }
+
+      const addressModels = userModel?.addresses;
+      if (!addressModels || addressModels.length !== 1) {
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ADDRESS_NOT_VALID);
+      }
+      const addressModel = addressModels[0];
+
       let couponModel = null;
       if (payload?.coupon) {
         const couponsResult = contractModel.coupons;
-        if ((couponsResult?.length ?? 0) === 1) {
+        if (couponsResult?.length === 1) {
           couponModel = couponsResult?.[0];
         } else {
-          const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID);
-          return error.logAndReturn(this.logger);
+          throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID);
         }
       }
       for (const product of payload?.products ?? []) {
         const filteredProduct = productModels.filter((element) => element.id === product.id);
         if (filteredProduct.length !== 1) {
-          const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT);
-          return error.logAndReturn(this.logger);
+          throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT);
         }
         if ((filteredProduct?.[0].quantity ?? 0) < (product?.quantity ?? 0)) {
-          const error = new Utils.iKomidaError(
+          throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_QUANTITY,
             filteredProduct[0].title,
           );
-          return error.logAndReturn(this.logger);
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
@@ -336,7 +390,7 @@ export default class Orders {
             product?.discountType ?? Types.Types.TDiscount.NO,
           )
         ) {
-          const error = new Utils.iKomidaError(
+          throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
             `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
               ? Logics.Finances.calcDiscount(
@@ -347,25 +401,63 @@ export default class Orders {
               : product.price
             }`,
           );
-          return error.logAndReturn(this.logger);
         }
         if (filteredProduct[0].title !== product.title) {
-          const error = new Utils.iKomidaError(
+          throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_NAME,
             filteredProduct[0].title,
           );
-          return error.logAndReturn(this.logger);
         }
       }
+
+      //MARK: -- validate product options
+      for (const productModel of productModels) {
+        const productOptionIds = productOptionsID.filter(
+          (productOptions) => productOptions.productId === productModel.id,
+        );
+        if (
+          productOptionIds.length !== 1 &&
+          (productModel.productOptions?.length ?? 0) !== (productOptionIds?.[0].optionsId.size ?? 0)
+        ) {
+          this.logger.warn(
+            `"productModel.productOptions.length:", ${productModel.productOptions?.length}, "productOptionIds?.[0].optionsId.size:", ${productOptionIds?.[0].optionsId.size}`,
+          );
+          throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST);
+        }
+      }
+
+      //MARK: -- validate products, product options and calc subtotal
       for (const productModel of productModels) {
         const filteredProduct = payload?.products?.filter(
           (element: Types.Classes.CProduct) => element.id === productModel.id,
         );
         if (filteredProduct?.length !== 1) {
-          const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_1);
-          return error.logAndReturn(this.logger);
+          throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_1);
         }
         const product = filteredProduct[0];
+
+        for (const productOptionModel of productModel.productOptions ?? []) {
+          const filteredOptions = product.options?.filter((option) => option.id === productOptionModel.id);
+          if (!filteredOptions || filteredOptions.length !== 1) {
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2);
+          }
+          const option = filteredOptions[0];
+          if ((productOptionModel?.price ?? 0) !== option.price || option.units > (productOptionModel?.units ?? 0)) {
+            this.logger.warn(
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price}, "option.units > productOptionModel?.units:", ${option.units} > ${productOptionModel?.units}`,
+            );
+            throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST);
+          }
+          subtotal +=
+            ((productOptionModel.price ?? 0) -
+              Logics.Finances.calcDiscount(
+                productOptionModel.price ?? 0,
+                productModel?.discount ?? 0,
+                productModel?.discountType ?? Types.Types.TDiscount.NO,
+              )) *
+            Number(option?.units);
+        }
+
         subtotal +=
           ((productModel?.price ?? 0) -
             Logics.Finances.calcDiscount(
@@ -377,105 +469,138 @@ export default class Orders {
       }
       const discount = Logics.Finances.calcDiscount(subtotal, couponModel?.value ?? 0, couponModel?.valueType);
       if (!payload?.payment || !payload?.payment.id) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_METHOD_NOT_DEFINED);
-        return error.logAndReturn(this.logger);
+        throw new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_METHOD_NOT_DEFINED,
+        );
       }
 
-      const orderModel: DBModels.OrderModel = await userModel.$create('order', {
-        status: Types.Types.TOrderStatus.WAITING_PAYMENT,
-        subtotal,
-        discount,
-        locationLatitude: payload?.location?.latitude,
-        locationLongitude: payload?.location?.longitude,
-        preparationMin: vendorSettingsModel?.preparationMin,
-        preparationMax: vendorSettingsModel?.preparationMax,
-        customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
-        paymentMethodType: userModel?.paymentMethodType,
-      });
-      contractModel.lastOrderCustomID = orderModel.customID ?? 0;
-      await contractModel.save();
-      // await orderModel.$set('contract', contractModel)
-      await contractModel.$add('order', orderModel);
-      if (couponModel) {
-        await couponModel.decrement({
-          quantity: 1,
-        });
-        await orderModel.$set('coupon', couponModel)
-      }
       const userCreditCardModels = userModel?.userCreditCards;
-
       let userCreditCardModel = null;
-
       if (
         !Utils.System.isDemo(contractModel?.ikomidaID, userModel?.areaCode, userModel?.phone) &&
-        (userCreditCardModels?.length ?? 0) === 1 &&
+        userCreditCardModels?.length === 1 &&
         Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE === userModel?.paymentMethodType
       ) {
         userCreditCardModel = userCreditCardModels?.[0];
-        if (userCreditCardModel) {
-          await orderModel.$set('userCreditCard', userCreditCardModel)
-        }
       }
 
-      const addressModels = userModel?.addresses;
-      if (!addressModels || addressModels.length !== 1) {
-        if (couponModel) {
-          await couponModel.increment({
-            quantity: 1,
-          });
-        }
-        await orderModel.destroy();
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ADDRESS_NOT_VALID);
-        return error.logAndReturn(this.logger);
-      }
-      const addressModel = addressModels[0];
       let delivery: number | undefined = 0;
       if (!vendorSettingsModel?.deliveryFree) {
         const calcDelivery = ((addressModel?.distance ?? 1) / 1000) * (vendorSettingsModel?.delivery ?? 0);
         delivery =
           calcDelivery < (vendorSettingsModel?.deliveryMin ?? 0) ? vendorSettingsModel?.deliveryMin : calcDelivery;
         if (delivery !== payload?.delivery) {
-          if (couponModel) {
-            await couponModel.increment({
-              quantity: 1,
-            });
+          throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_DELIVERY_NOT_VALID);
+        }
+      }
+
+      const orderProducts = await Promise.all(
+        productModels.map(async (productModel) => {
+          const filteredProducts = payload?.products?.filter((product) => product.id === productModel.id);
+          if (filteredProducts?.length !== 1) {
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2);
           }
-          await orderModel.destroy();
-          const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_DELIVERY_NOT_VALID);
-          return error.logAndReturn(this.logger);
-        }
-      }
-      orderModel.delivery = delivery;
-      await orderModel.save();
-      await orderModel.$set('address', addressModel)
-      for (const productModel of productModels) {
-        const filteredProduct = payload?.products?.filter(
-          (element: Types.Classes.CProduct) => element.id === productModel.id,
+          const product = filteredProducts[0];
+          await productModel.decrement(
+            {
+              quantity: product.quantity,
+            },
+            {
+              transaction,
+            },
+          );
+          const productOptions = await Promise.all(
+            productModel.productOptions?.map(async (productOption) => {
+              const filteredOptions = product.options?.filter((option) => option.id === productOption.id);
+              if (!filteredOptions || filteredOptions.length !== 1) {
+                throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2);
+              }
+              const option = filteredOptions[0];
+              return {
+                name: productOption.name,
+                price: productOption.price,
+                units: option?.units,
+                product: productModel,
+                contract: contractModel,
+                productOption,
+              };
+            }) ?? [],
+          );
+          return {
+            title: productModel.title,
+            discountType: productModel.discountType,
+            price: productModel.price,
+            discount: productModel.discount,
+            quantity: product.quantity,
+            user: userModel,
+            contract: contractModel,
+            product: productModel,
+            productOptions,
+          };
+        }),
+      );
+
+      const orderModel: DBModels.OrderModel = await userModel.$create(
+        'order',
+        {
+          status: Types.Types.TOrderStatus.WAITING_PAYMENT,
+          subtotal,
+          discount,
+          locationLatitude: payload?.location?.latitude,
+          locationLongitude: payload?.location?.longitude,
+          preparationMin: vendorSettingsModel?.preparationMin,
+          preparationMax: vendorSettingsModel?.preparationMax,
+          customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
+          paymentMethodType: userModel?.paymentMethodType,
+          address: addressModel,
+          coupon: couponModel,
+          contract: contractModel,
+          userCreditCard: userCreditCardModel,
+          delivery,
+          orderProducts,
+        },
+        {
+          transaction,
+          include: [
+            DBModels.AddressModel,
+            DBModels.CouponModel,
+            DBModels.ContractModel,
+            DBModels.UserCreditCardModel,
+            {
+              model: DBModels.OrderProductModel,
+              include: [
+                {
+                  model: DBModels.OrderProductOptionModel,
+                  include: [DBModels.ContractModel, DBModels.ProductModel, DBModels.ProductOptionModel],
+                },
+                DBModels.UserModel,
+                DBModels.ContractModel,
+                DBModels.ProductModel,
+              ],
+            },
+          ],
+        },
+      );
+      contractModel.lastOrderCustomID = orderModel.customID ?? 0;
+      await contractModel.save({ transaction });
+      if (couponModel) {
+        await couponModel.decrement(
+          {
+            quantity: 1,
+          },
+          { transaction },
         );
-        if (filteredProduct?.length !== 1) {
-          return await this.pullBack(orderModel, Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2, couponModel)
-        }
-        const product = filteredProduct[0];
-        await productModel.decrement({
-          quantity: product.quantity,
-        });
-        const orderProductModel: DBModels.OrderProductModel = await orderModel.$create('orderProduct', {
-          title: productModel.title,
-          price: productModel.price,
-          discount: productModel.discount,
-          discountType: productModel.discountType,
-          quantity: product.quantity,
-        });
-        // await productModel.$add('orderProduct', orderProductModel)
-        await orderProductModel.$set('product', productModel)
-        await orderProductModel.$set('contract', contractModel)
-        await orderProductModel.$set('user', userModel)
       }
+
       try {
         if (userCreditCardModel?.id && orderModel.id) {
-          const processPaymentRequest = Types.Classes.CProcessPayment.init(userCreditCardModel?.id, Number(subtotal) + Number(delivery) - Number(discount), orderModel.id);
+          const processPaymentRequest = Types.Classes.CProcessPayment.init(
+            userCreditCardModel?.id,
+            Number(subtotal) + Number(delivery) - Number(discount),
+            orderModel.id,
+          );
           if ((String(processPaymentRequest?.amount)?.length ?? 0) > 9) {
-            return await this.pullBack(orderModel, Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_AMOUNT, couponModel)
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_AMOUNT);
           }
           const response = await axios.post(
             `${Domain.MicroService.payments}/processPayment`,
@@ -487,15 +612,16 @@ export default class Orders {
               },
             },
           );
-          const returnResponse = new Utils.Return<Types.Classes.CProcessPaymentResponse>(response.data.success, Types.Classes.CProcessPaymentResponse.fromObject(response.data.data), response.status)
-          const processPaymentResponse = returnResponse.data
-          if (
-            response.status < 200 ||
-            response.status >= 300 ||
-            !returnResponse?.success ||
-            !returnResponse?.data
-          ) {
-            return await this.pullBack(orderModel, Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID, couponModel)
+          const returnResponse = new Utils.Return<Types.Classes.CProcessPaymentResponse>(
+            response.data.success,
+            Types.Classes.CProcessPaymentResponse.fromObject(response.data.data),
+            response.status,
+          );
+          const processPaymentResponse = returnResponse.data;
+          if (response.status < 200 || response.status >= 300 || !returnResponse?.success || !returnResponse?.data) {
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID,
+            );
           }
           const userPaymentModels = await userModel.$get('userPayments', {
             where: {
@@ -503,10 +629,12 @@ export default class Orders {
             },
           });
           if ((userPaymentModels?.length ?? 0) !== 1) {
-            return await this.pullBack(orderModel, Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID, couponModel)
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID,
+            );
           }
           const userPaymentModel = userPaymentModels?.[0];
-          await orderModel.$set('userPayment', userPaymentModel)
+          await orderModel.$set('userPayment', userPaymentModel, { transaction });
           if (userPaymentModel?.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN;
           } else if (
@@ -521,20 +649,42 @@ export default class Orders {
         } else {
           orderModel.status = Types.Types.TOrderStatus.OPEN;
         }
-        await orderModel.save();
+        await orderModel.save({ transaction });
       } catch (exception: any) {
-        return await this.pullBack(orderModel, Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_EXCEPTION, couponModel, exception)
+        throw new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_EXCEPTION,
+          exception,
+        );
       }
 
-      const orderProductModels: DBModels.OrderProductModel[] = await orderModel.$get('orderProducts')
+      await transaction.commit();
+
+      const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? [];
       const products =
         orderProductModels?.map((orderProduct) => {
+          const orderProductOptions = orderProduct.orderProductOptions?.map((orderProductOption) => {
+            return Types.Classes.CProductOption.init(
+              orderProductOption.name ?? '',
+              false,
+              orderProductOption.price ?? 0,
+              orderProductOption.units ?? 0,
+              0,
+            );
+          });
           return Types.Classes.CProduct.init(
             orderProduct?.title ?? '-',
             orderProduct?.price ?? 0,
             orderProduct?.discount ?? 0,
             orderProduct?.discountType ?? Types.Types.TDiscount.NO,
             orderProduct?.quantity ?? 0,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            orderProductOptions,
           );
         }) ?? [];
       const address = Types.Classes.CAddress.init(
@@ -550,7 +700,7 @@ export default class Orders {
         addressModel.distance,
         addressModel.duration,
       );
-      let payment: Types.Classes.CPaymentMethod | undefined
+      let payment: Types.Classes.CPaymentMethod | undefined;
       if (userCreditCardModel) {
         payment = Types.Classes.CPaymentMethod.init(
           userCreditCardModel?.type ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
@@ -558,7 +708,6 @@ export default class Orders {
           userCreditCardModel?.lastDigits ?? '',
           userCreditCardModel?.firstDigits ?? '',
         );
-
       }
       const preparation = Types.Classes.COrderPreparation.init(
         (vendorSettingsModel.preparationMin ?? 0) * 60,
@@ -615,53 +764,39 @@ export default class Orders {
           this.logger.warn(`[NEW_ORDERS] - Dispositivo ou usuário não cadastrado para receber notificações push.`);
         }
       } catch (exception: any) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION, exception);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
+          exception,
+        );
         error.log(this.logger);
       }
       return new Utils.Return(true, order);
     } catch (exception: any) {
-      const error = new Utils.iKomidaError(
-        Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
-        exception?.message,
-      );
+      await transaction.rollback();
+      let error: Utils.iKomidaError;
+      if (exception instanceof Utils.iKomidaError) {
+        error = exception;
+      } else {
+        error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
+          exception?.message,
+        );
+      }
       return error.logAndReturn(this.logger);
     }
   }
 
-  private async pullBack(orderModel: DBModels.OrderModel, iKomidaError: IiKomidaErrorModel, couponModel?: DBModels.CouponModel | null, exception?: any) {
-    if (couponModel) {
-      await couponModel.increment({
-        quantity: 1,
-      });
-      const orderProductModels: DBModels.OrderProductModel[] = await orderModel.$get('orderProducts', {
-        include: {
-          model: DBModels.ProductModel,
-          required: false,
-        },
-      });
-      for (const orderProductModel of orderProductModels) {
-        await orderProductModel?.product?.decrement({
-          quantity: orderProductModel?.quantity,
-        });
-      }
-      await DBModels.OrderProductModel.destroy({
-        where: {
-          id: orderModel.id,
-        },
-      });
-      await orderModel.destroy();
-    }
-    const error = new Utils.iKomidaError(iKomidaError, exception);
-    return error.logAndReturn(this.logger);
-  }
-
   async changeOrderStatus(identity: Types.Classes.CUser, input: any) {
     try {
-      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
-      if (!payload?.status || !payload?.id ||
+      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input);
+      if (
+        !payload?.status ||
+        !payload?.id ||
         ![Types.Types.TOrderStatus.CANCELED, Types.Types.TOrderStatus.DELIVERED].includes(payload?.status)
       ) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS,
+        );
         return error.logAndReturn(this.logger);
       }
       const contractModel = await DBModels.ContractModel.findOne({
@@ -710,7 +845,9 @@ export default class Orders {
       const orders = userModels?.[0]?.orders;
       const order = orders?.[0];
       if ((orders?.length ?? 0) !== 1) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_ORDER_NOT_FOUND);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_ORDER_NOT_FOUND,
+        );
         return error.logAndReturn(this.logger);
       }
       if (
@@ -726,7 +863,9 @@ export default class Orders {
           ].includes(order?.status) &&
           Types.Types.TOrderStatus.DELIVERED === payload?.status)
       ) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS,
+        );
         return error.logAndReturn(this.logger);
       }
       if (
@@ -738,7 +877,9 @@ export default class Orders {
         ].includes(order?.userPayment?.status) &&
         order?.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
       ) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WAITING_PAYMENT);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WAITING_PAYMENT,
+        );
         return error.logAndReturn(this.logger);
       }
       if (
@@ -792,7 +933,10 @@ export default class Orders {
           await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload);
           await amqp?.close();
         }
-        return new Utils.Return(true, Types.Classes.COrder.fromObject({ id: order?.id, status: order?.status, finishedAt: order?.finishedAt }));
+        return new Utils.Return(
+          true,
+          Types.Classes.COrder.fromObject({ id: order?.id, status: order?.status, finishedAt: order?.finishedAt }),
+        );
       } catch (exception: any) {
         const error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
