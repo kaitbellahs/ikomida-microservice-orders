@@ -70,5 +70,5 @@ jobs:
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
       - name: Deploy
         run: |-
-          kubectl -n ikomida delete deploy contracts-microservice || true
+          kubectl -n ikomida delete deploy orders-microservice || true
           for FILE in k8s/*.yaml; do printf "$(cat $FILE)\n---\n" | envsubst; done | kubectl apply -f -
