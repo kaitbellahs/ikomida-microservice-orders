@@ -1,10 +1,11 @@
 import autoExternal from 'rollup-plugin-auto-external';
 import tsPlugin from '@rollup/plugin-typescript';
 import resolve from "@rollup/plugin-node-resolve";
-import commonjs from "@rollup/plugin-commonjs";
-// import { terser } from 'rollup-plugin-terser';
+import { terser } from 'rollup-plugin-terser';
 import json from '@rollup/plugin-json';
+import commonjs from '@rollup/plugin-commonjs';
 import pkg from "./package.json";
+import tsconfig from './tsconfig.json';
 
 export default [
     {
@@ -17,14 +18,14 @@ export default [
             },
         ],
         plugins: [
-            json(),
-            tsPlugin(),
-            commonjs(),
             autoExternal(),
+            tsPlugin(tsconfig),
             resolve({
-                preferBuiltins: false
+                preferBuiltins: true
             }),
-            // terser()
+            commonjs(),
+            json(),
+            terser()
         ],
     },
 ];
