@@ -47,6 +47,12 @@ export default class Orders {
             {
               model: DBModels.OrderProductModel,
               required: false,
+              include: [
+                {
+                  model: DBModels.OrderProductOptionModel,
+                  required: false,
+                },
+              ],
             },
             {
               model: DBModels.UserModel,
@@ -101,6 +107,18 @@ export default class Orders {
       );
       const products =
         orderModel.orderProducts?.map((orderProduct) => {
+          const orderProductOptions =
+            orderProduct.orderProductOptions?.map((orderProductOption) => {
+              return Types.Classes.CProductOption.init(
+                orderProductOption.name ?? '-',
+                false,
+                orderProductOption.price ?? 0,
+                orderProductOption.units ?? 0,
+                0,
+                undefined,
+                orderProductOption.productOptionId
+              );
+            }) ?? [];
           return Types.Classes.CProduct.init(
             orderProduct?.title ?? '-',
             orderProduct?.price ?? 0,
@@ -113,6 +131,8 @@ export default class Orders {
             undefined,
             undefined,
             undefined,
+            undefined,
+            orderProductOptions,
             undefined,
             orderProduct?.productId,
           );
@@ -179,9 +199,11 @@ export default class Orders {
 
   async changeOrderStatus(identity: Types.Classes.CUser, input: any) {
     try {
-      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
+      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input);
       if (!payload?.status || !payload?.id) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS,
+        );
         return error.logAndReturn(this.logger);
       }
       const contractModel = await DBModels.ContractModel.findOne({
@@ -219,13 +241,17 @@ export default class Orders {
         return error.logAndReturn(this.logger);
       }
       if (!payload.id || (payload.status && !orderOptions.includes(payload.status))) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_MISSING_OBJECT);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_MISSING_OBJECT,
+        );
         return error.logAndReturn(this.logger);
       }
       const orders = await contractModel.orders;
       let order = null;
       if (!orders || orders.length !== 1) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_ORDER_NOT_FOUND);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_ORDER_NOT_FOUND,
+        );
         return error.logAndReturn(this.logger);
       }
       order = orders[0];
@@ -234,7 +260,9 @@ export default class Orders {
         order.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.PAID &&
         order.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
       ) {
-        const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WAITING_PAYMENT);
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WAITING_PAYMENT,
+        );
         return error.logAndReturn(this.logger);
       }
       if (
@@ -295,7 +323,10 @@ export default class Orders {
         );
         error.log(this.logger);
       }
-      return new Utils.Return(true, Types.Classes.COrder.fromObject({ id: order.id, status: order.status, finishedAt: order.finishedAt }));
+      return new Utils.Return(
+        true,
+        Types.Classes.COrder.fromObject({ id: order.id, status: order.status, finishedAt: order.finishedAt }),
+      );
     } catch (exception: any) {
       const error = new Utils.iKomidaError(
         Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
