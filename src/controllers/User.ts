@@ -19,10 +19,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -183,12 +183,12 @@ export default class Orders {
     const transaction = await Domain.SqlDB.sequelize.transaction()
     try {
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
-      const productsID = [...new Set(payload?.products?.map((item: Types.Classes.CProduct) => item.id))]
-      const productOptionsID: { productId: string | undefined; optionsId: Set<string> }[] = []
+      const productsIDs = [...new Set(payload?.products?.map(item => item.id))]
+      const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
       for (const product of payload?.products ?? []) {
-        productOptionsID.push({
+        productOptionsIDs.push({
           productId: product.id,
-          optionsId: new Set(
+          optionsIds: new Set(
             (product.options ?? [])
               .filter(
                 productOption => productOption.id !== '' && productOption.id !== null && productOption.id !== undefined
@@ -199,23 +199,22 @@ export default class Orders {
       }
       const includeCoupon = payload?.coupon?.id
         ? [
-            {
-              model: DBModels.CouponModel,
-              required: false,
-              where: {
-                id: payload?.coupon?.id,
-                quantity: {
-                  [Domain.SqlDB.Op.gt]: 0
-                },
-                validity: {
-                  [Domain.SqlDB.Op.gt]: new Date()
-                }
+          {
+            model: DBModels.CouponModel,
+            required: false,
+            where: {
+              id: payload?.coupon?.id,
+              quantity: {
+                [Domain.SqlDB.Op.gt]: 0
               },
-              limit: 2
-            }
-          ]
+              validity: {
+                [Domain.SqlDB.Op.gt]: new Date()
+              }
+            },
+            limit: 2
+          }
+        ]
         : []
-
       const contractModel = await DBModels.ContractModel.findOne({
         where: {
           ikomidaID: identity.ikomidaID
@@ -259,7 +258,7 @@ export default class Orders {
             model: DBModels.ProductModel,
             where: {
               id: {
-                [Domain.SqlDB.Op.in]: productsID
+                [Domain.SqlDB.Op.in]: productsIDs
               }
             },
             include: [
@@ -268,7 +267,7 @@ export default class Orders {
                 required: false,
                 where: {
                   id: {
-                    [Domain.SqlDB.Op.in]: [...productOptionsID.flatMap(product => product.optionsId)]
+                    [Domain.SqlDB.Op.in]: [...productOptionsIDs.flatMap(product => [...product.optionsIds])]
                   }
                 }
               }
@@ -301,7 +300,7 @@ export default class Orders {
           ...includeCoupon
         ]
       })
-
+      console.log('contractModel:', JSON.stringify(contractModel?.toJSON()))
       if (!contractModel) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_CONTRACT)
       }
@@ -340,9 +339,9 @@ export default class Orders {
       const userModel = userModels[0]
       let subtotal = 0
       const productModels = contractModel.products
-      if (productModels?.length !== productsID.length) {
+      if (productModels?.length !== productsIDs.length) {
         this.logger.warn(
-          `"productModels.length:", ${productModels?.length}, "productsID.length:", ${productsID?.length}`
+          `"productModels.length:", ${productModels?.length}, "productsID.length:", ${productsIDs.length}`
         )
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_NOT_EXIST)
       }
@@ -375,28 +374,27 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-            Logics.Finances.calcDiscount(
-              filteredProduct?.[0]?.price ?? 0,
-              filteredProduct?.[0]?.discount ?? 0,
-              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-            ) !==
+          Logics.Finances.calcDiscount(
+            filteredProduct?.[0]?.price ?? 0,
+            filteredProduct?.[0]?.discount ?? 0,
+            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+          ) !==
           (product?.price ?? 0) -
-            Logics.Finances.calcDiscount(
-              product?.price ?? 0,
-              product?.discount ?? 0,
-              product?.discountType ?? Types.Types.TDiscount.NO
-            )
+          Logics.Finances.calcDiscount(
+            product?.price ?? 0,
+            product?.discount ?? 0,
+            product?.discountType ?? Types.Types.TDiscount.NO
+          )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
-              couponModel
-                ? Logics.Finances.calcDiscount(
-                    product.price ?? 0,
-                    product?.discount ?? 0,
-                    product?.discountType ?? Types.Types.TDiscount.NO
-                  )
-                : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
+              ? Logics.Finances.calcDiscount(
+                product.price ?? 0,
+                product?.discount ?? 0,
+                product?.discountType ?? Types.Types.TDiscount.NO
+              )
+              : product.price
             }`
           )
         }
@@ -409,38 +407,39 @@ export default class Orders {
       }
 
       //MARK: -- validate product options
-      for (const productModel of productModels) {
-        const productOptionIds = productOptionsID.filter(productOptions => productOptions.productId === productModel.id)
+      for (const product of payload.products) {
+        const productModel = productModels.filter(productModel => productModel.id === product.id)[0]
+        const productOptionIds = productOptionsIDs.filter(
+          productOptions => productOptions.productId === productModel.id
+        )
         if (
           productOptionIds.length !== 1 &&
-          (productModel.productOptions?.length ?? 0) !== (productOptionIds?.[0].optionsId.size ?? 0)
+          (productModel.productOptions?.length ?? 0) < (productOptionIds?.[0].optionsIds.size ?? 0)
         ) {
           this.logger.warn(
-            `"productModel.productOptions.length:", ${productModel.productOptions?.length}, "productOptionIds?.[0].optionsId.size:", ${productOptionIds?.[0].optionsId.size}`
+            `"productModel.productOptions.length:", ${productModel.productOptions?.length}, "productOptionIds?.[0].optionsId.size:", ${productOptionIds?.[0].optionsIds.size}`
           )
           throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
         }
       }
 
       //MARK: -- validate products, product options and calc subtotal
-      for (const productModel of productModels) {
-        const filteredProduct = payload?.products?.filter(
-          (element: Types.Classes.CProduct) => element.id === productModel.id
-        )
-        if (filteredProduct?.length !== 1) {
+      for (const product of payload.products) {
+        const filtredProductModels = productModels.filter(productModel => productModel.id === product.id)
+        if (filtredProductModels?.length !== 1) {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_1)
         }
-        const product = filteredProduct[0]
+        const productModel = filtredProductModels[0]
 
-        for (const productOptionModel of productModel.productOptions ?? []) {
-          const filteredOptions = product.options?.filter(option => option.id === productOptionModel.id)
-          if (!filteredOptions || filteredOptions.length !== 1) {
+        for (const option of product.options ?? []) {
+          const filteredProductOptionModel = productModel.productOptions?.filter(productOptionModel => option.id === productOptionModel.id)
+          if (!filteredProductOptionModel || filteredProductOptionModel.length !== 1) {
             throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2)
           }
-          const option = filteredOptions[0]
-          if ((productOptionModel?.price ?? 0) !== option.price || option.units > (productOptionModel?.units ?? 0)) {
+          const productOptionModel = filteredProductOptionModel[0]
+          if ((productOptionModel?.price ?? 0) !== option.price || option.units > (productOptionModel?.units ?? 0) * product.quantity) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price}, "option.units > productOptionModel?.units:", ${option.units} > ${productOptionModel?.units}`
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price}, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity}`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
           }
@@ -491,12 +490,12 @@ export default class Orders {
       }
 
       const orderProducts = await Promise.all(
-        productModels.map(async productModel => {
-          const filteredProducts = payload?.products?.filter(product => product.id === productModel.id)
-          if (filteredProducts?.length !== 1) {
+        payload.products.map(async product => {
+          const filteredProductModels = productModels?.filter(productModel => product.id === productModel.id)
+          if (filteredProductModels?.length !== 1) {
             throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2)
           }
-          const product = filteredProducts[0]
+          const productModel = filteredProductModels[0]
           await productModel.decrement(
             {
               quantity: product.quantity
@@ -506,19 +505,18 @@ export default class Orders {
             }
           )
           const productOptions = await Promise.all(
-            productModel.productOptions?.map(async productOption => {
-              const filteredOptions = product.options?.filter(option => option.id === productOption.id)
-              if (!filteredOptions || filteredOptions.length !== 1) {
+            product.options?.map(async option => {
+              const filteredProductOptions = productModel.productOptions?.filter(productOption => option.id === productOption.id)
+              if (!filteredProductOptions || filteredProductOptions.length !== 1) {
                 throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2)
               }
-              const option = filteredOptions[0]
+              const productOption = filteredProductOptions[0]
               return {
                 name: productOption.name,
                 price: productOption.price,
-                units: option?.units,
-                product: productModel,
-                contract: contractModel,
-                productOption
+                units: option.units,
+                productOptionId: productOption.id,
+                // contractId: contractModel.id,
               }
             }) ?? []
           )
@@ -528,33 +526,34 @@ export default class Orders {
             price: productModel.price,
             discount: productModel.discount,
             quantity: product.quantity,
-            user: userModel,
-            contract: contractModel,
-            product: productModel,
+            userId: userModel.id,
+            contractId: contractModel.id,
+            productId: productModel.id,
             productOptions
           }
         })
       )
-
+      const orderPayload = {
+        status: Types.Types.TOrderStatus.WAITING_PAYMENT,
+        subtotal,
+        discount,
+        locationLatitude: payload?.location?.latitude,
+        locationLongitude: payload?.location?.longitude,
+        preparationMin: vendorSettingsModel?.preparationMin,
+        preparationMax: vendorSettingsModel?.preparationMax,
+        customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
+        paymentMethodType: userModel?.paymentMethodType,
+        addressId: addressModel.id,
+        couponId: couponModel?.id,
+        contractId: contractModel.id,
+        userCreditCardId: userCreditCardModel?.id,
+        delivery,
+        orderProducts
+      }
+      console.log('orderPayload:', JSON.stringify(orderPayload))
       const orderModel: DBModels.OrderModel = await userModel.$create(
         'order',
-        {
-          status: Types.Types.TOrderStatus.WAITING_PAYMENT,
-          subtotal,
-          discount,
-          locationLatitude: payload?.location?.latitude,
-          locationLongitude: payload?.location?.longitude,
-          preparationMin: vendorSettingsModel?.preparationMin,
-          preparationMax: vendorSettingsModel?.preparationMax,
-          customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
-          paymentMethodType: userModel?.paymentMethodType,
-          address: addressModel,
-          coupon: couponModel,
-          contract: contractModel,
-          userCreditCard: userCreditCardModel,
-          delivery,
-          orderProducts
-        },
+        orderPayload,
         {
           transaction,
           include: [
@@ -567,7 +566,11 @@ export default class Orders {
               include: [
                 {
                   model: DBModels.OrderProductOptionModel,
-                  include: [DBModels.ContractModel, DBModels.ProductModel, DBModels.ProductOptionModel]
+                  include: [
+                    // DBModels.ContractModel,
+                    // DBModels.ProductModel,
+                    DBModels.ProductOptionModel
+                  ]
                 },
                 DBModels.UserModel,
                 DBModels.ContractModel,
