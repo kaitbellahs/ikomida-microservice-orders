@@ -19,10 +19,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -199,26 +199,27 @@ export default class Orders {
       }
       const includeCoupon = payload?.coupon?.id
         ? [
-          {
-            model: DBModels.CouponModel,
-            required: false,
-            where: {
-              id: payload?.coupon?.id,
-              quantity: {
-                [Domain.SqlDB.Op.gt]: 0
+            {
+              model: DBModels.CouponModel,
+              required: false,
+              where: {
+                id: payload?.coupon?.id,
+                quantity: {
+                  [Domain.SqlDB.Op.gt]: 0
+                },
+                validity: {
+                  [Domain.SqlDB.Op.gt]: new Date()
+                }
               },
-              validity: {
-                [Domain.SqlDB.Op.gt]: new Date()
-              }
-            },
-            limit: 2
-          }
-        ]
+              limit: 2
+            }
+          ]
         : []
       const contractModel = await DBModels.ContractModel.findOne({
         where: {
           ikomidaID: identity.ikomidaID
         },
+        transaction,
         include: [
           {
             model: DBModels.UserModel,
@@ -300,7 +301,6 @@ export default class Orders {
           ...includeCoupon
         ]
       })
-      console.log('contractModel:', JSON.stringify(contractModel?.toJSON()))
       if (!contractModel) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_CONTRACT)
       }
@@ -374,27 +374,28 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            filteredProduct?.[0]?.price ?? 0,
-            filteredProduct?.[0]?.discount ?? 0,
-            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-          ) !==
+            Logics.Finances.calcDiscount(
+              filteredProduct?.[0]?.price ?? 0,
+              filteredProduct?.[0]?.discount ?? 0,
+              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+            ) !==
           (product?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            product?.price ?? 0,
-            product?.discount ?? 0,
-            product?.discountType ?? Types.Types.TDiscount.NO
-          )
+            Logics.Finances.calcDiscount(
+              product?.price ?? 0,
+              product?.discount ?? 0,
+              product?.discountType ?? Types.Types.TDiscount.NO
+            )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
-              ? Logics.Finances.calcDiscount(
-                product.price ?? 0,
-                product?.discount ?? 0,
-                product?.discountType ?? Types.Types.TDiscount.NO
-              )
-              : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
+              couponModel
+                ? Logics.Finances.calcDiscount(
+                    product.price ?? 0,
+                    product?.discount ?? 0,
+                    product?.discountType ?? Types.Types.TDiscount.NO
+                  )
+                : product.price
             }`
           )
         }
@@ -432,14 +433,23 @@ export default class Orders {
         const productModel = filtredProductModels[0]
 
         for (const option of product.options ?? []) {
-          const filteredProductOptionModel = productModel.productOptions?.filter(productOptionModel => option.id === productOptionModel.id)
+          const filteredProductOptionModel = productModel.productOptions?.filter(
+            productOptionModel => option.id === productOptionModel.id
+          )
           if (!filteredProductOptionModel || filteredProductOptionModel.length !== 1) {
             throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2)
           }
           const productOptionModel = filteredProductOptionModel[0]
-          if ((productOptionModel?.price ?? 0) !== option.price || option.units > (productOptionModel?.units ?? 0) * product.quantity) {
+          if (
+            (productOptionModel?.price ?? 0) !== option.price ||
+            option.units > (productOptionModel?.units ?? 0) * product.quantity
+          ) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price}, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity}`
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
+                option.price
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${
+                (productOptionModel?.units ?? 0) * product.quantity
+              }`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
           }
@@ -506,7 +516,9 @@ export default class Orders {
           )
           const productOptions = await Promise.all(
             product.options?.map(async option => {
-              const filteredProductOptions = productModel.productOptions?.filter(productOption => option.id === productOption.id)
+              const filteredProductOptions = productModel.productOptions?.filter(
+                productOption => option.id === productOption.id
+              )
               if (!filteredProductOptions || filteredProductOptions.length !== 1) {
                 throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2)
               }
@@ -516,7 +528,7 @@ export default class Orders {
                 price: productOption.price,
                 units: option.units,
                 productOptionId: productOption.id,
-                // contractId: contractModel.id,
+                contractId: contractModel.id
               }
             }) ?? []
           )
@@ -550,36 +562,27 @@ export default class Orders {
         delivery,
         orderProducts
       }
-      console.log('orderPayload:', JSON.stringify(orderPayload))
-      const orderModel: DBModels.OrderModel = await userModel.$create(
-        'order',
-        orderPayload,
-        {
-          transaction,
-          include: [
-            DBModels.AddressModel,
-            DBModels.CouponModel,
-            DBModels.ContractModel,
-            DBModels.UserCreditCardModel,
-            {
-              model: DBModels.OrderProductModel,
-              include: [
-                {
-                  model: DBModels.OrderProductOptionModel,
-                  include: [
-                    // DBModels.ContractModel,
-                    // DBModels.ProductModel,
-                    DBModels.ProductOptionModel
-                  ]
-                },
-                DBModels.UserModel,
-                DBModels.ContractModel,
-                DBModels.ProductModel
-              ]
-            }
-          ]
-        }
-      )
+      const orderModel: DBModels.OrderModel = await userModel.$create('order', orderPayload, {
+        transaction,
+        include: [
+          DBModels.AddressModel,
+          DBModels.CouponModel,
+          DBModels.ContractModel,
+          DBModels.UserCreditCardModel,
+          {
+            model: DBModels.OrderProductModel,
+            include: [
+              {
+                model: DBModels.OrderProductOptionModel,
+                include: [DBModels.ContractModel, DBModels.ProductOptionModel]
+              },
+              DBModels.UserModel,
+              DBModels.ContractModel,
+              DBModels.ProductModel
+            ]
+          }
+        ]
+      })
       contractModel.lastOrderCustomID = orderModel.customID ?? 0
       await contractModel.save({ transaction })
       if (couponModel) {
@@ -622,7 +625,9 @@ export default class Orders {
               Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID
             )
           }
+          console.log('processPaymentResponse?.id:', processPaymentResponse?.id)
           const userPaymentModels = await userModel.$get('userPayments', {
+            transaction,
             where: {
               id: processPaymentResponse?.id
             }
@@ -633,7 +638,8 @@ export default class Orders {
             )
           }
           const userPaymentModel = userPaymentModels?.[0]
-          await orderModel.$set('userPayment', userPaymentModel, { transaction })
+          console.log('userPaymentModels:', userPaymentModel.toJSON())
+          await userPaymentModel.$set('order', orderModel, { transaction })
           if (userPaymentModel?.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
           } else if (
@@ -648,6 +654,7 @@ export default class Orders {
         } else {
           orderModel.status = Types.Types.TOrderStatus.OPEN
         }
+        console.log('orderpayment:')
         await orderModel.save({ transaction })
       } catch (exception: any) {
         throw new Utils.iKomidaError(
@@ -655,8 +662,6 @@ export default class Orders {
           exception
         )
       }
-
-      await transaction.commit()
 
       const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? []
       const products =
@@ -737,6 +742,7 @@ export default class Orders {
         orderModel.id,
         orderModel.createdAt.getTime()
       )
+      console.log('order:', order)
 
       try {
         const pNModels = contractModel?.pNs
@@ -769,6 +775,9 @@ export default class Orders {
         )
         error.log(this.logger)
       }
+      console.log('order befor commited')
+      await transaction.commit()
+      console.log('order commited')
       return new Utils.Return(true, order)
     } catch (exception: any) {
       await transaction.rollback()
