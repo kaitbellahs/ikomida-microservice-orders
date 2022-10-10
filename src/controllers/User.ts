@@ -523,7 +523,7 @@ export default class Orders {
               transaction
             }
           )
-          const productOptions = await Promise.all(
+          const orderProductOptions = await Promise.all(
             product.options?.map(async option => {
               const filteredProductOptions = productModel.productOptions?.filter(
                 productOption => option.id === productOption.id
@@ -550,7 +550,7 @@ export default class Orders {
             userId: userModel.id,
             contractId: contractModel.id,
             productId: productModel.id,
-            productOptions
+            orderProductOptions
           }
         })
       )
@@ -666,6 +666,9 @@ export default class Orders {
               logging: console.log, transaction
             }
           )
+          if (!userPaymentModel) {
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR)
+          }
           if (chargeResult.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
           } else if (
