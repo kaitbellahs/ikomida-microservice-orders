@@ -1,4 +1,4 @@
-import { Domain, Utils, BackendTypes, Logics, Types, DBModels } from '@ikomida/shared-backend'
+import { Domain, Utils, BackendTypes, Logics, Types, DBModels, Helpers, slugging } from '@ikomida/shared-backend'
 import axios from 'axios'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
 
@@ -258,7 +258,13 @@ export default class Orders {
           },
           {
             model: DBModels.VendorSettingsModel,
-            required: false
+            required: false,
+            include: [
+              {
+                model: DBModels.VendorPaymentGatewayModel,
+                required: false
+              }
+            ]
           },
           {
             model: DBModels.ProductModel,
@@ -606,59 +612,66 @@ export default class Orders {
 
       try {
         if (userCreditCardModel?.id && orderModel.id) {
-          const processPaymentRequest = Types.Classes.CProcessPayment.init(
-            userCreditCardModel?.id,
-            Number(subtotal) + Number(delivery) - Number(discount),
-            orderModel.id
-          )
-          if ((String(processPaymentRequest?.amount)?.length ?? 0) > 9) {
-            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_AMOUNT)
+          const vendorSettingsModel = contractModel.vendorSettings
+          if (!vendorSettingsModel) {
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_INVALID_VENDOR_SETTINGS
+            )
           }
-          const response = await axios.post(
-            `${Domain.MicroService.payments}/processPayment`,
-            processPaymentRequest.toJSON(),
+          const vendorPaymentGatewayModel = vendorSettingsModel.vendorPaymentGateway
+          const pagseguroHelper = new Helpers.PagseguroHelper(this.logger)
+
+          const paymentGateway = await pagseguroHelper.configure(vendorPaymentGatewayModel)
+          if (!paymentGateway) {
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_INVALID_VENDOR_PAYMENT_SETTINGS
+            )
+          }
+          if (!userCreditCardModel.type) {
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR)
+          }
+          const amount = Number(subtotal) + Number(delivery) - Number(discount)
+          const chargeObject: Types.Classes.Pagseguro.CPagSeguroCreateCharge =
+            Types.Classes.Pagseguro.CPagSeguroCreateCharge.init(
+              orderModel.id,
+              amount,
+              userCreditCardModel.type.pagseguro,
+              slugging(vendorSettingsModel?.contractName),
+              undefined,
+              contractModel.id,
+              undefined,
+              userCreditCardModel.token,
+              `iKomida/${contractModel?.contractName}`
+            )
+          const chargeResult = await paymentGateway.createCharge(chargeObject)
+          if (!chargeResult) {
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR)
+          }
+          const userPaymentModel: DBModels.UserPaymentModel = await userModel.$create(
+            'userPayment',
             {
-              headers: {
-                identity: JSON.stringify(identity.toJSON()),
-                'X-Requested-With': 'iKomida-PS-V0.0.1'
-              }
+              status: chargeResult.status,
+              gateway: paymentGateway.constructor.name,
+              brand: userCreditCardModel.brand,
+              firstDigits: userCreditCardModel.firstDigits,
+              lastDigits: userCreditCardModel.lastDigits,
+              gatewayPaymentID: chargeResult.id,
+              orderID: chargeResult.reference,
+              amount: chargeResult.amount,
+              contractId: contractModel.id,
+              userCreditCardId: userCreditCardModel.id,
+              orderId: orderModel.id
+            },
+            {
+              logging: console.log, transaction
             }
           )
-          const returnResponse = new Utils.Return<Types.Classes.CProcessPaymentResponse>(
-            response.data.success,
-            Types.Classes.CProcessPaymentResponse.fromObject(response.data.data),
-            response.status
-          )
-          const processPaymentResponse = returnResponse.data
-          if (response.status < 200 || response.status >= 300 || !returnResponse?.success || !returnResponse?.data) {
-            throw new Utils.iKomidaError(
-              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID
-            )
-          }
-          console.log('processPaymentResponse?.id:', processPaymentResponse?.id)
-          const userPaymentModels = await userModel.$get('userPayments', {
-            logging: console.log,
-            transaction,
-            where: {
-              id: processPaymentResponse?.id
-            }
-          })
-          if ((userPaymentModels?.length ?? 0) !== 1) {
-            throw new Utils.iKomidaError(
-              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID
-            )
-          }
-          const userPaymentModel = userPaymentModels?.[0]
-          console.log('userPaymentModels:', userPaymentModel.toJSON())
-          await userPaymentModel.$set('order', orderModel, {
-            transaction
-          })
-          if (userPaymentModel?.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
+          if (chargeResult.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
           } else if (
-            userPaymentModel?.status &&
+            chargeResult.status &&
             ![Types.Types.TPagSeguroPaymentStatus.INANALYSE, Types.Types.TPagSeguroPaymentStatus.AUTHORIZED].includes(
-              userPaymentModel?.status
+              chargeResult.status
             )
           ) {
             orderModel.status = Types.Types.TOrderStatus.CANCELED
