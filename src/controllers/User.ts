@@ -1,7 +1,6 @@
 import { Domain, Utils, BackendTypes, Logics, Types, DBModels } from '@ikomida/shared-backend'
 import axios from 'axios'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
-import { Transaction } from 'sequelize'
 
 export default class Orders {
   logger
@@ -181,7 +180,9 @@ export default class Orders {
   }
 
   async newOrder(identity: Types.Classes.CUser, input: any) {
-    const transaction = await Domain.SqlDB.sequelize.transaction({ isolationLevel: Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED })
+    const transaction = await Domain.SqlDB.sequelize.transaction({
+      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
+    })
     try {
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
       const productsIDs = [...new Set(payload?.products?.map(item => item.id))]
