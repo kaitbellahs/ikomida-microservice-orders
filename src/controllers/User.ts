@@ -615,7 +615,7 @@ export default class Orders {
       }
 
       try {
-        if (userCreditCardModel?.id && orderModel.id) {
+        if (userCreditCardModel?.id && orderId) {
           const vendorSettingsModel = contractModel.vendorSettings
           if (!vendorSettingsModel) {
             throw new Utils.iKomidaError(
@@ -637,7 +637,7 @@ export default class Orders {
           const amount = Number(subtotal) + Number(delivery) - Number(discount)
           const chargeObject: Types.Classes.Pagseguro.CPagSeguroCreateCharge =
             Types.Classes.Pagseguro.CPagSeguroCreateCharge.init(
-              orderModel.id,
+              orderId,
               amount,
               userCreditCardModel.type.pagseguro,
               slugging(vendorSettingsModel?.contractName),
@@ -664,7 +664,7 @@ export default class Orders {
               amount: chargeResult.amount,
               contractId: contractModel.id,
               userCreditCardId: userCreditCardModel.id,
-              orderId: orderModel.id
+              orderId
             },
             {
               logging: console.log, transaction
@@ -780,6 +780,9 @@ export default class Orders {
       )
       console.log('order:', order)
 
+      console.log('order befor commited')
+      await transaction.commit()
+      console.log('order commited')
       try {
         const pNModels = contractModel?.pNs
         if ((pNModels?.length ?? 0) === 1) {
@@ -811,9 +814,6 @@ export default class Orders {
         )
         error.log(this.logger)
       }
-      console.log('order befor commited')
-      await transaction.commit()
-      console.log('order commited')
       return new Utils.Return(true, order)
     } catch (exception: any) {
       await transaction.rollback()
@@ -823,7 +823,7 @@ export default class Orders {
       } else {
         error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
-          exception?.message
+          exception
         )
       }
       return error.logAndReturn(this.logger)
