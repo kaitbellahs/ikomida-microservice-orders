@@ -183,7 +183,7 @@ export default class Orders {
     const transaction = await Domain.SqlDB.sequelize.transaction({
       logging: console.log,
       autocommit: false,
-      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.SERIALIZABLE
+      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
     })
     try {
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
@@ -775,7 +775,7 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         undefined,
-        orderModel.id,
+        orderId,
         orderModel.createdAt.getTime()
       )
       console.log('order:', order)
@@ -793,7 +793,7 @@ export default class Orders {
           message.data.method = notification.method
           message.data.uri = notification.uri
           message.data.logon = notification.logon
-          message.data.payload = order.id
+          message.data.payload = orderId
           const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
           payload.method = 'send'
           const payloadObject = new Types.Classes.CAMQPPayloadObject()
