@@ -507,7 +507,7 @@ export default class Orders {
         }
       }
 
-      const orderId = uuidv4()
+      // const orderId = uuidv4()
       const orderProducts = await Promise.all(
         payload.products.map(async product => {
           const filteredProductModels = productModels?.filter(productModel => product.id === productModel.id)
@@ -537,7 +537,7 @@ export default class Orders {
                 name: productOption.name,
                 price: productOption.price,
                 units: option.units,
-                orderId,
+                // orderId,
                 productOptionId: productOption.id,
                 contractId: contractModel.id
               }
@@ -549,7 +549,7 @@ export default class Orders {
             price: productModel.price,
             discount: productModel.discount,
             quantity: product.quantity,
-            orderId,
+            // orderId,
             userId: userModel.id,
             contractId: contractModel.id,
             productId: productModel.id,
@@ -558,7 +558,7 @@ export default class Orders {
         })
       )
       const orderPayload = {
-        id: orderId,
+        // id: orderId,
         status: Types.Types.TOrderStatus.WAITING_PAYMENT,
         subtotal,
         discount,
@@ -615,7 +615,7 @@ export default class Orders {
       }
 
       try {
-        if (userCreditCardModel?.id && orderId) {
+        if (userCreditCardModel?.id && orderModel.id) {
           const vendorSettingsModel = contractModel.vendorSettings
           if (!vendorSettingsModel) {
             throw new Utils.iKomidaError(
@@ -637,7 +637,7 @@ export default class Orders {
           const amount = Number(subtotal) + Number(delivery) - Number(discount)
           const chargeObject: Types.Classes.Pagseguro.CPagSeguroCreateCharge =
             Types.Classes.Pagseguro.CPagSeguroCreateCharge.init(
-              orderId,
+              orderModel.id,
               amount,
               userCreditCardModel.type.pagseguro,
               slugging(vendorSettingsModel?.contractName),
@@ -664,7 +664,7 @@ export default class Orders {
               amount: chargeResult.amount,
               contractId: contractModel.id,
               userCreditCardId: userCreditCardModel.id,
-              orderId
+              orderId: orderModel.id
             },
             {
               logging: console.log, transaction
@@ -775,7 +775,7 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         undefined,
-        orderId,
+        orderModel.id,
         orderModel.createdAt.getTime()
       )
       console.log('order:', order)
@@ -793,7 +793,7 @@ export default class Orders {
           message.data.method = notification.method
           message.data.uri = notification.uri
           message.data.logon = notification.logon
-          message.data.payload = orderId
+          message.data.payload = orderModel.id
           const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
           payload.method = 'send'
           const payloadObject = new Types.Classes.CAMQPPayloadObject()
