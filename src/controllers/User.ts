@@ -181,7 +181,9 @@ export default class Orders {
 
   async newOrder(identity: Types.Classes.CUser, input: any) {
     const transaction = await Domain.SqlDB.sequelize.transaction({
-      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
+      logging: console.log,
+      autocommit: false,
+      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.SERIALIZABLE
     })
     try {
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
@@ -221,6 +223,7 @@ export default class Orders {
         where: {
           ikomidaID: identity.ikomidaID
         },
+        logging: console.log,
         transaction,
         include: [
           {
@@ -510,6 +513,7 @@ export default class Orders {
               quantity: product.quantity
             },
             {
+              logging: console.log,
               transaction
             }
           )
@@ -563,6 +567,7 @@ export default class Orders {
       }
       const orderModel: DBModels.OrderModel = await userModel.$create('order', orderPayload, {
         transaction,
+        logging: console.log,
         include: [
           DBModels.AddressModel,
           DBModels.CouponModel,
@@ -583,13 +588,19 @@ export default class Orders {
         ]
       })
       contractModel.lastOrderCustomID = orderModel.customID ?? 0
-      await contractModel.save({ transaction })
+      await contractModel.save({
+        logging: console.log,
+        transaction
+      })
       if (couponModel) {
         await couponModel.decrement(
           {
             quantity: 1
           },
-          { transaction }
+          {
+            logging: console.log,
+            transaction
+          }
         )
       }
 
@@ -626,6 +637,7 @@ export default class Orders {
           }
           console.log('processPaymentResponse?.id:', processPaymentResponse?.id)
           const userPaymentModels = await userModel.$get('userPayments', {
+            logging: console.log,
             transaction,
             where: {
               id: processPaymentResponse?.id
@@ -638,7 +650,9 @@ export default class Orders {
           }
           const userPaymentModel = userPaymentModels?.[0]
           console.log('userPaymentModels:', userPaymentModel.toJSON())
-          await userPaymentModel.$set('order', orderModel, { transaction })
+          await userPaymentModel.$set('order', orderModel, {
+            transaction
+          })
           if (userPaymentModel?.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
           } else if (
@@ -654,7 +668,10 @@ export default class Orders {
           orderModel.status = Types.Types.TOrderStatus.OPEN
         }
         console.log('orderpayment:')
-        await orderModel.save({ transaction })
+        await orderModel.save({
+          logging: console.log,
+          transaction
+        })
       } catch (exception: any) {
         throw new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_EXCEPTION,
