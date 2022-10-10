@@ -1,5 +1,5 @@
 import { Domain, Utils, BackendTypes, Logics, Types, DBModels, Helpers, slugging } from '@ikomida/shared-backend'
-import axios from 'axios'
+import { v4 as uuidv4 } from 'uuid'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
 
 export default class Orders {
@@ -507,6 +507,7 @@ export default class Orders {
         }
       }
 
+      const orderId = uuidv4()
       const orderProducts = await Promise.all(
         payload.products.map(async product => {
           const filteredProductModels = productModels?.filter(productModel => product.id === productModel.id)
@@ -536,6 +537,7 @@ export default class Orders {
                 name: productOption.name,
                 price: productOption.price,
                 units: option.units,
+                orderId,
                 productOptionId: productOption.id,
                 contractId: contractModel.id
               }
@@ -547,6 +549,7 @@ export default class Orders {
             price: productModel.price,
             discount: productModel.discount,
             quantity: product.quantity,
+            orderId,
             userId: userModel.id,
             contractId: contractModel.id,
             productId: productModel.id,
@@ -555,6 +558,7 @@ export default class Orders {
         })
       )
       const orderPayload = {
+        id: orderId,
         status: Types.Types.TOrderStatus.WAITING_PAYMENT,
         subtotal,
         discount,
