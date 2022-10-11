@@ -180,12 +180,13 @@ export default class Orders {
   }
 
   async newOrder(identity: Types.Classes.CUser, input: any) {
-    const transaction = await Domain.SqlDB.sequelize.transaction({
-      logging: console.log,
-      autocommit: false,
-      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
-    })
+    let transaction: Domain.SqlDB.Transaction | undefined = undefined
     try {
+      transaction = await Domain.SqlDB.sequelize.transaction({
+        logging: console.log,
+        autocommit: false,
+        isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
+      })
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
       const productsIDs = [...new Set(payload?.products?.map(item => item.id))]
       const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
@@ -719,10 +720,18 @@ export default class Orders {
         throw error
       }
 
+      console.log('order befor commited')
+      await transaction.commit()
+      console.log('order commited')
+      console.log('0')
+
       const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? []
+      console.log('1')
       const products =
         orderProductModels.map(orderProduct => {
+          console.log('2')
           const orderProductOptions = orderProduct.orderProductOptions?.map(orderProductOption => {
+            console.log('3')
             return Types.Classes.CProductOption.init(
               orderProductOption.name ?? '',
               false,
@@ -731,6 +740,7 @@ export default class Orders {
               0
             )
           })
+          console.log('4')
           return Types.Classes.CProduct.init(
             orderProduct.title ?? '-',
             orderProduct.price ?? 0,
@@ -747,6 +757,7 @@ export default class Orders {
             orderProductOptions
           )
         }) ?? []
+      console.log('5')
       const address = Types.Classes.CAddress.init(
         addressModel.postalCode ?? '-',
         addressModel.street ?? '-',
@@ -760,25 +771,32 @@ export default class Orders {
         addressModel.distance,
         addressModel.duration
       )
+      console.log('6')
       let payment: Types.Classes.CPaymentMethod | undefined
+      console.log('7')
       if (userCreditCardModel) {
+        console.log('8')
         payment = Types.Classes.CPaymentMethod.init(
           userCreditCardModel.type ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
           userCreditCardModel.brand ?? 'Unknown',
           userCreditCardModel.lastDigits ?? '',
           userCreditCardModel.firstDigits ?? ''
         )
+        console.log('9')
       }
+      console.log('10')
       const preparation = Types.Classes.COrderPreparation.init(
         (vendorSettingsModel.preparationMin ?? 0) * 60,
         (vendorSettingsModel.preparationMax ?? 0) * 60
       )
+      console.log('11')
 
       const coupon = Types.Classes.CCoupon.init(
         couponModel?.name ?? '-',
         couponModel?.value ?? 0,
         couponModel?.valueType ?? Types.Types.TDiscount.NO
       )
+      console.log('12')
 
       const order = Types.Classes.COrder.init(
         subtotal,
@@ -798,11 +816,9 @@ export default class Orders {
         orderId,
         orderModel.createdAt.getTime()
       )
-      console.log('order:', order)
+      console.log('13')
+      console.log('order:', JSON.stringify(order.toJSON()))
 
-      console.log('order befor commited')
-      await transaction.commit()
-      console.log('order commited')
       // try {
       //   const pNModels = contractModel?.pNs
       //   if ((pNModels?.length ?? 0) === 1) {
@@ -836,7 +852,7 @@ export default class Orders {
       // }
       return new Utils.Return(true, order)
     } catch (exception: any) {
-      await transaction.rollback()
+      await transaction?.rollback()
       let error: Utils.iKomidaError
       if (exception instanceof Utils.iKomidaError) {
         error = exception
