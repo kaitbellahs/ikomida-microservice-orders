@@ -507,7 +507,7 @@ export default class Orders {
         }
       }
 
-      // const orderId = uuidv4()
+      const orderId = uuidv4()
       const orderProducts = await Promise.all(
         payload.products.map(async product => {
           const filteredProductModels = productModels?.filter(productModel => product.id === productModel.id)
@@ -537,7 +537,7 @@ export default class Orders {
                 name: productOption.name,
                 price: productOption.price,
                 units: option.units,
-                // orderId,
+                orderId,
                 productOptionId: productOption.id,
                 contractId: contractModel.id
               }
@@ -549,7 +549,7 @@ export default class Orders {
             price: productModel.price,
             discount: productModel.discount,
             quantity: product.quantity,
-            // orderId,
+            orderId,
             userId: userModel.id,
             contractId: contractModel.id,
             productId: productModel.id,
@@ -558,7 +558,7 @@ export default class Orders {
         })
       )
       const orderPayload = {
-        // id: orderId,
+        id: orderId,
         status: Types.Types.TOrderStatus.WAITING_PAYMENT,
         subtotal,
         discount,
@@ -637,7 +637,7 @@ export default class Orders {
           const amount = Number(subtotal) + Number(delivery) - Number(discount)
           const chargeObject: Types.Classes.Pagseguro.CPagSeguroCreateCharge =
             Types.Classes.Pagseguro.CPagSeguroCreateCharge.init(
-              orderModel.id,
+              orderId,
               amount,
               userCreditCardModel.type.pagseguro,
               slugging(vendorSettingsModel?.contractName),
@@ -664,7 +664,7 @@ export default class Orders {
               amount: chargeResult.amount,
               contractId: contractModel.id,
               userCreditCardId: userCreditCardModel.id,
-              orderId: orderModel.id
+              orderId
             },
             {
               logging: console.log, transaction
@@ -701,7 +701,7 @@ export default class Orders {
 
       const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? []
       const products =
-        orderProductModels?.map(orderProduct => {
+        orderProductModels.map(orderProduct => {
           const orderProductOptions = orderProduct.orderProductOptions?.map(orderProductOption => {
             return Types.Classes.CProductOption.init(
               orderProductOption.name ?? '',
@@ -712,11 +712,11 @@ export default class Orders {
             )
           })
           return Types.Classes.CProduct.init(
-            orderProduct?.title ?? '-',
-            orderProduct?.price ?? 0,
-            orderProduct?.discount ?? 0,
-            orderProduct?.discountType ?? Types.Types.TDiscount.NO,
-            orderProduct?.quantity ?? 0,
+            orderProduct.title ?? '-',
+            orderProduct.price ?? 0,
+            orderProduct.discount ?? 0,
+            orderProduct.discountType ?? Types.Types.TDiscount.NO,
+            orderProduct.quantity ?? 0,
             undefined,
             undefined,
             undefined,
@@ -743,10 +743,10 @@ export default class Orders {
       let payment: Types.Classes.CPaymentMethod | undefined
       if (userCreditCardModel) {
         payment = Types.Classes.CPaymentMethod.init(
-          userCreditCardModel?.type ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
-          userCreditCardModel?.brand ?? 'Unknown',
-          userCreditCardModel?.lastDigits ?? '',
-          userCreditCardModel?.firstDigits ?? ''
+          userCreditCardModel.type ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+          userCreditCardModel.brand ?? 'Unknown',
+          userCreditCardModel.lastDigits ?? '',
+          userCreditCardModel.firstDigits ?? ''
         )
       }
       const preparation = Types.Classes.COrderPreparation.init(
@@ -775,7 +775,7 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         undefined,
-        orderModel.id,
+        orderId,
         orderModel.createdAt.getTime()
       )
       console.log('order:', order)
@@ -788,12 +788,12 @@ export default class Orders {
         if ((pNModels?.length ?? 0) === 1) {
           const notification = new Utils.Notification(Utils.Notification.NEW_ORDER)
           const message = new Types.Classes.CNotificationPayload()
-          message.notification = notification
+          message.notification = Utils.Notification.NEW_ORDER
           message.data = new Types.Classes.CNotificationData()
           message.data.method = notification.method
           message.data.uri = notification.uri
           message.data.logon = notification.logon
-          message.data.payload = orderModel.id
+          message.data.payload = orderId
           const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
           payload.method = 'send'
           const payloadObject = new Types.Classes.CAMQPPayloadObject()
