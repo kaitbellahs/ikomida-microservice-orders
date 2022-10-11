@@ -213,13 +213,13 @@
   resolved "https://registry.yarnpkg.com/@humanwhocodes/object-schema/-/object-schema-1.2.1.tgz#b520529ec21d8e5945a1851dfd1c32e94e39ff45"
   integrity sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==
 
-"@ikomida/shared-backend@^1.0.5":
-  version "1.0.5"
-  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-backend/-/@ikomida/shared-backend-1.0.5.tgz#67c09d346e05af7880412be700fdb079ee51993a"
-  integrity sha512-4H68gy702watJu18hKjhdZEUDcwZmCd3Ue5rAFMJT0zY8dSo2mwfLqKr3pSPILwRgsKdz7r65RZQTzazuSfNEQ==
+"@ikomida/shared-backend@^1.0.6":
+  version "1.0.6"
+  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-backend/-/@ikomida/shared-backend-1.0.6.tgz#d6334cfa8bdd6e1c03732b939459321217f8ece4"
+  integrity sha512-ujcd97JDJmnvK+EsnGBkxnObZZ0f/NtAt23+qsAt0JuUXPh3hDw3tpmWwj3DGXScQeHPwEdVe3VPYXhaEvT0jQ==
   dependencies:
     "@ikomida/shared-logics" "^0.2.3"
-    "@ikomida/shared-types" "^1.2.1"
+    "@ikomida/shared-types" "^1.2.2"
     amqplib "^0.10.3"
     axios "^1.1.2"
     bcrypt "^5.1.0"
@@ -229,7 +229,7 @@
     mysql2 "^2.3.3"
     node-mailjet "^5.1.1"
     reflect-metadata "^0.1.13"
-    sequelize "^6.24.0"
+    sequelize "^6.25.0"
     sequelize-typescript "^2.1.3"
     sharp "^0.31.1"
     uuid "^9.0.0"
@@ -242,10 +242,10 @@
   dependencies:
     luxon "^3.0.4"
 
-"@ikomida/shared-types@^1.2.1":
-  version "1.2.1"
-  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-types/-/@ikomida/shared-types-1.2.1.tgz#a5cd3b98edcecb2216dd74abcdd0daca517f43cc"
-  integrity sha512-wx0f/s2EEk5W8aNaTOGYIqwkXflvIQ08A0k9JLExEl4pYc9Y8eaeNzPYrl1VcAXlETSSmiCRuE5oyV1e6LPcWw==
+"@ikomida/shared-types@^1.2.2":
+  version "1.2.2"
+  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-types/-/@ikomida/shared-types-1.2.2.tgz#d79cee78ec11e395b049b8611699dae112d2d07d"
+  integrity sha512-g+7pk73YGukQ1tbwaNjFpRYDNPKJ7DujEOWwrwWg1texGFXuka1U35K7epP0lhvaquqJ9o6f4D3p3zyltVgUcg==
 
 "@jridgewell/gen-mapping@^0.3.0":
   version "0.3.2"
@@ -3582,10 +3582,10 @@ sequelize-typescript@^2.1.3:
   dependencies:
     glob "7.2.0"
 
-sequelize@^6.24.0:
-  version "6.24.0"
-  resolved "https://registry.yarnpkg.com/sequelize/-/sequelize-6.24.0.tgz#ae5c60a54f10c3bdf1c57318a72b224bad306956"
-  integrity sha512-mPo7Q7gWkrsstjR2aw8ahkrj8RUJCozz3kedAz2B5ZIdLoQEH1z2tvaeJONI8R6RqeuyRQosx9Yn3s9yQyo6lQ==
+sequelize@^6.25.0:
+  version "6.25.0"
+  resolved "https://registry.yarnpkg.com/sequelize/-/sequelize-6.25.0.tgz#957c2c7a90a5fcd544cf92903715593e49002c8b"
+  integrity sha512-Bu2V+Yjw/4fwGve0rwk02jmbuA0JGGGD1N7yrfGQXVRD91hg4j9Ecth4NwnK4fX1MQA4R0Cqfx3BaJDAOoaiSA==
   dependencies:
     "@types/debug" "^4.1.7"
     "@types/validator" "^13.7.1"
