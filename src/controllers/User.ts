@@ -2,6 +2,7 @@ import { Domain, Utils, BackendTypes, Logics, Types, DBModels, Helpers, slugging
 import { v4 as uuidv4, validate as validateUUID } from 'uuid'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
 import _ from 'lodash'
+import axios from 'axios'
 import { Includeable } from 'sequelize'
 
 export default class Orders {
@@ -26,10 +27,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -192,9 +193,6 @@ export default class Orders {
       if (_.isEmpty(input)) {
         throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_OBJECT)
       }
-      transaction = await Domain.SqlDB.sequelize.transaction({
-        autocommit: false
-      })
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
       const productsIDs = [...new Set(payload.products?.map(item => item.id))]
       const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
@@ -212,21 +210,21 @@ export default class Orders {
       }
       const includeCoupon: Includeable[] = payload.coupon?.id
         ? [
-          {
-            model: DBModels.CouponModel,
-            required: false,
-            where: {
-              id: payload.coupon?.id,
-              quantity: {
-                [Domain.SqlDB.Op.gt]: 0
+            {
+              model: DBModels.CouponModel,
+              required: false,
+              where: {
+                id: payload.coupon?.id,
+                quantity: {
+                  [Domain.SqlDB.Op.gt]: 0
+                },
+                validity: {
+                  [Domain.SqlDB.Op.gt]: new Date()
+                }
               },
-              validity: {
-                [Domain.SqlDB.Op.gt]: new Date()
-              }
-            },
-            limit: 2
-          }
-        ]
+              limit: 2
+            }
+          ]
         : []
       const userIncludes: Includeable[] = [
         {
@@ -250,8 +248,6 @@ export default class Orders {
         where: {
           ikomidaID: identity.ikomidaID
         },
-
-        transaction,
         include: [
           {
             model: DBModels.UserModel,
@@ -397,27 +393,28 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            filteredProduct?.[0]?.price ?? 0,
-            filteredProduct?.[0]?.discount ?? 0,
-            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-          ) !==
+            Logics.Finances.calcDiscount(
+              filteredProduct?.[0]?.price ?? 0,
+              filteredProduct?.[0]?.discount ?? 0,
+              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+            ) !==
           (product?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            product?.price ?? 0,
-            product?.discount ?? 0,
-            product?.discountType ?? Types.Types.TDiscount.NO
-          )
+            Logics.Finances.calcDiscount(
+              product?.price ?? 0,
+              product?.discount ?? 0,
+              product?.discountType ?? Types.Types.TDiscount.NO
+            )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
-              ? Logics.Finances.calcDiscount(
-                product.price ?? 0,
-                product?.discount ?? 0,
-                product?.discountType ?? Types.Types.TDiscount.NO
-              )
-              : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
+              couponModel
+                ? Logics.Finances.calcDiscount(
+                    product.price ?? 0,
+                    product?.discount ?? 0,
+                    product?.discountType ?? Types.Types.TDiscount.NO
+                  )
+                : product.price
             }`
           )
         }
@@ -467,8 +464,10 @@ export default class Orders {
             option.units > (productOptionModel?.units ?? 0) * product.quantity
           ) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
-              }, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
+                option.price
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${
+                (productOptionModel?.units ?? 0) * product.quantity
               }`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
@@ -520,6 +519,9 @@ export default class Orders {
       }
 
       const orderId = uuidv4()
+      transaction = await Domain.SqlDB.sequelize.transaction({
+        autocommit: false
+      })
       const orderProducts = await Promise.all(
         payload.products.map(async product => {
           const filteredProductModels = productModels?.filter(productModel => product.id === productModel.id)
@@ -588,7 +590,6 @@ export default class Orders {
       }
       const orderModel: DBModels.OrderModel = await userModel.$create('order', orderPayload, {
         transaction,
-
         include: [
           DBModels.AddressModel,
           DBModels.CouponModel,
@@ -622,78 +623,61 @@ export default class Orders {
           }
         )
       }
-
+      await transaction.commit()
+      transaction = undefined
       try {
         if (userCreditCardModel?.id && orderModel.id) {
-          const vendorSettingsModel = contractModel.vendorSettings
-          if (!vendorSettingsModel) {
-            throw new Utils.iKomidaError(
-              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_INVALID_VENDOR_SETTINGS
-            )
+          const processPaymentRequest = Types.Classes.CProcessPayment.init(
+            userCreditCardModel?.id,
+            Number(subtotal) + Number(delivery) - Number(discount),
+            orderModel.id
+          )
+          if ((String(processPaymentRequest?.amount)?.length ?? 0) > 9) {
+            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_AMOUNT)
           }
-          const vendorPaymentGatewayModel = vendorSettingsModel.vendorPaymentGateway
-          const pagseguroHelper = new Helpers.PagseguroHelper(this.logger)
-
-          const paymentGateway = await pagseguroHelper.configure(vendorPaymentGatewayModel)
-          if (!paymentGateway) {
-            throw new Utils.iKomidaError(
-              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_INVALID_VENDOR_PAYMENT_SETTINGS
-            )
-          }
-          if (!userCreditCardModel.type) {
-            throw new Utils.iKomidaError(
-              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
-            )
-          }
-          const amount = Number(subtotal) + Number(delivery) - Number(discount)
-          const chargeObject: Types.Classes.Pagseguro.CPagSeguroCreateCharge =
-            Types.Classes.Pagseguro.CPagSeguroCreateCharge.init(
-              orderId,
-              amount,
-              userCreditCardModel.type.pagseguro,
-              slugging(vendorSettingsModel?.contractName),
-              undefined,
-              contractModel.id,
-              undefined,
-              userCreditCardModel.token,
-              `iKomida/${contractModel?.contractName}`
-            )
-          const chargeResult = await paymentGateway.createCharge(chargeObject)
-          if (!chargeResult) {
-            throw new Utils.iKomidaError(
-              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
-            )
-          }
-          const userPaymentModel: DBModels.UserPaymentModel = await userModel.$create(
-            'userPayment',
+          const response = await axios.post(
+            `${Domain.MicroService.payments}/processPayment`,
+            processPaymentRequest.toJSON(),
             {
-              status: chargeResult.status,
-              gateway: paymentGateway.constructor.name,
-              brand: userCreditCardModel.brand,
-              firstDigits: userCreditCardModel.firstDigits,
-              lastDigits: userCreditCardModel.lastDigits,
-              gatewayPaymentID: chargeResult.id,
-              orderID: chargeResult.reference,
-              amount: chargeResult.amount,
-              contractId: contractModel.id,
-              userCreditCardId: userCreditCardModel.id,
-              orderId
-            },
-            {
-              transaction
+              headers: {
+                identity: JSON.stringify(identity.toJSON()),
+                'X-Requested-With': 'iKomida-PS-V0.0.1'
+              }
             }
           )
+          const returnResponse = new Utils.Return<Types.Classes.CProcessPaymentResponse>(
+            response.data.success,
+            Types.Classes.CProcessPaymentResponse.fromObject(response.data.data),
+            response.status
+          )
+          const processPaymentResponse = returnResponse.data
+          if (response.status < 200 || response.status >= 300 || !returnResponse?.success || !returnResponse?.data) {
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID
+            )
+          }
+          const userPaymentModels = await userModel.$get('userPayments', {
+            where: {
+              id: processPaymentResponse?.id
+            }
+          })
+          if ((userPaymentModels?.length ?? 0) !== 1) {
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_RESPONSE_INVILID
+            )
+          }
+          const userPaymentModel = userPaymentModels?.[0]
           if (!userPaymentModel) {
             throw new Utils.iKomidaError(
               Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
             )
           }
-          if (chargeResult.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
+          if (userPaymentModel.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
           } else if (
-            chargeResult.status &&
+            userPaymentModel.status &&
             ![Types.Types.TPagSeguroPaymentStatus.INANALYSE, Types.Types.TPagSeguroPaymentStatus.AUTHORIZED].includes(
-              chargeResult.status
+              userPaymentModel.status
             )
           ) {
             orderModel.status = Types.Types.TOrderStatus.CANCELED
@@ -702,9 +686,7 @@ export default class Orders {
         } else {
           orderModel.status = Types.Types.TOrderStatus.OPEN
         }
-        await orderModel.save({
-          transaction
-        })
+        await orderModel.save()
       } catch (exception: any) {
         let error: Utils.iKomidaError
         if (exception instanceof Utils.iKomidaError) {
@@ -717,9 +699,6 @@ export default class Orders {
         }
         throw error
       }
-
-      await transaction.commit()
-
       const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? []
       const products =
         orderProductModels.map(orderProduct => {
