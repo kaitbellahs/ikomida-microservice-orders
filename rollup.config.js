@@ -4,8 +4,10 @@ import resolve from "@rollup/plugin-node-resolve";
 import { terser } from 'rollup-plugin-terser';
 import json from '@rollup/plugin-json';
 import commonjs from '@rollup/plugin-commonjs';
-import pkg from "./package.json";
-import tsconfig from './tsconfig.json';
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const pkg = require('./package.json')
+const tsconfig = require('./tsconfig.json')
 
 export default [
     {

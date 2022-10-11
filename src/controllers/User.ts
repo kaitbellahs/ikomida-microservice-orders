@@ -19,10 +19,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -203,21 +203,21 @@ export default class Orders {
       }
       const includeCoupon = payload?.coupon?.id
         ? [
-          {
-            model: DBModels.CouponModel,
-            required: false,
-            where: {
-              id: payload?.coupon?.id,
-              quantity: {
-                [Domain.SqlDB.Op.gt]: 0
+            {
+              model: DBModels.CouponModel,
+              required: false,
+              where: {
+                id: payload?.coupon?.id,
+                quantity: {
+                  [Domain.SqlDB.Op.gt]: 0
+                },
+                validity: {
+                  [Domain.SqlDB.Op.gt]: new Date()
+                }
               },
-              validity: {
-                [Domain.SqlDB.Op.gt]: new Date()
-              }
-            },
-            limit: 2
-          }
-        ]
+              limit: 2
+            }
+          ]
         : []
       const contractModel = await DBModels.ContractModel.findOne({
         where: {
@@ -385,27 +385,28 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            filteredProduct?.[0]?.price ?? 0,
-            filteredProduct?.[0]?.discount ?? 0,
-            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-          ) !==
+            Logics.Finances.calcDiscount(
+              filteredProduct?.[0]?.price ?? 0,
+              filteredProduct?.[0]?.discount ?? 0,
+              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+            ) !==
           (product?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            product?.price ?? 0,
-            product?.discount ?? 0,
-            product?.discountType ?? Types.Types.TDiscount.NO
-          )
+            Logics.Finances.calcDiscount(
+              product?.price ?? 0,
+              product?.discount ?? 0,
+              product?.discountType ?? Types.Types.TDiscount.NO
+            )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
-              ? Logics.Finances.calcDiscount(
-                product.price ?? 0,
-                product?.discount ?? 0,
-                product?.discountType ?? Types.Types.TDiscount.NO
-              )
-              : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
+              couponModel
+                ? Logics.Finances.calcDiscount(
+                    product.price ?? 0,
+                    product?.discount ?? 0,
+                    product?.discountType ?? Types.Types.TDiscount.NO
+                  )
+                : product.price
             }`
           )
         }
@@ -455,8 +456,10 @@ export default class Orders {
             option.units > (productOptionModel?.units ?? 0) * product.quantity
           ) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
-              }, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
+                option.price
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${
+                (productOptionModel?.units ?? 0) * product.quantity
               }`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
@@ -614,6 +617,11 @@ export default class Orders {
         )
       }
 
+      const paymentTransaction = await Domain.SqlDB.sequelize.transaction({
+        logging: console.log,
+        autocommit: false,
+        isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
+      })
       try {
         if (userCreditCardModel?.id && orderModel.id) {
           const vendorSettingsModel = contractModel.vendorSettings
@@ -632,7 +640,9 @@ export default class Orders {
             )
           }
           if (!userCreditCardModel.type) {
-            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR)
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
+            )
           }
           const amount = Number(subtotal) + Number(delivery) - Number(discount)
           const chargeObject: Types.Classes.Pagseguro.CPagSeguroCreateCharge =
@@ -649,7 +659,9 @@ export default class Orders {
             )
           const chargeResult = await paymentGateway.createCharge(chargeObject)
           if (!chargeResult) {
-            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR)
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
+            )
           }
           const userPaymentModel: DBModels.UserPaymentModel = await userModel.$create(
             'userPayment',
@@ -667,11 +679,14 @@ export default class Orders {
               orderId
             },
             {
-              logging: console.log, transaction
+              logging: console.log,
+              transaction: paymentTransaction
             }
           )
           if (!userPaymentModel) {
-            throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR)
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
+            )
           }
           if (chargeResult.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
@@ -690,13 +705,21 @@ export default class Orders {
         console.log('orderpayment:')
         await orderModel.save({
           logging: console.log,
-          transaction
+          transaction: paymentTransaction
         })
+        await paymentTransaction.commit()
       } catch (exception: any) {
-        throw new Utils.iKomidaError(
-          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_EXCEPTION,
-          exception
-        )
+        await paymentTransaction.rollback()
+        let error: Utils.iKomidaError
+        if (exception instanceof Utils.iKomidaError) {
+          error = exception
+        } else {
+          error = new Utils.iKomidaError(
+            Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_EXCEPTION,
+            exception
+          )
+        }
+        throw error
       }
 
       const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? []
