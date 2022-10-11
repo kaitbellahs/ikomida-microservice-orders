@@ -19,10 +19,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -203,21 +203,21 @@ export default class Orders {
       }
       const includeCoupon = payload?.coupon?.id
         ? [
-            {
-              model: DBModels.CouponModel,
-              required: false,
-              where: {
-                id: payload?.coupon?.id,
-                quantity: {
-                  [Domain.SqlDB.Op.gt]: 0
-                },
-                validity: {
-                  [Domain.SqlDB.Op.gt]: new Date()
-                }
+          {
+            model: DBModels.CouponModel,
+            required: false,
+            where: {
+              id: payload?.coupon?.id,
+              quantity: {
+                [Domain.SqlDB.Op.gt]: 0
               },
-              limit: 2
-            }
-          ]
+              validity: {
+                [Domain.SqlDB.Op.gt]: new Date()
+              }
+            },
+            limit: 2
+          }
+        ]
         : []
       const contractModel = await DBModels.ContractModel.findOne({
         where: {
@@ -385,28 +385,27 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-            Logics.Finances.calcDiscount(
-              filteredProduct?.[0]?.price ?? 0,
-              filteredProduct?.[0]?.discount ?? 0,
-              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-            ) !==
+          Logics.Finances.calcDiscount(
+            filteredProduct?.[0]?.price ?? 0,
+            filteredProduct?.[0]?.discount ?? 0,
+            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+          ) !==
           (product?.price ?? 0) -
-            Logics.Finances.calcDiscount(
-              product?.price ?? 0,
-              product?.discount ?? 0,
-              product?.discountType ?? Types.Types.TDiscount.NO
-            )
+          Logics.Finances.calcDiscount(
+            product?.price ?? 0,
+            product?.discount ?? 0,
+            product?.discountType ?? Types.Types.TDiscount.NO
+          )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
-              couponModel
-                ? Logics.Finances.calcDiscount(
-                    product.price ?? 0,
-                    product?.discount ?? 0,
-                    product?.discountType ?? Types.Types.TDiscount.NO
-                  )
-                : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
+              ? Logics.Finances.calcDiscount(
+                product.price ?? 0,
+                product?.discount ?? 0,
+                product?.discountType ?? Types.Types.TDiscount.NO
+              )
+              : product.price
             }`
           )
         }
@@ -456,10 +455,8 @@ export default class Orders {
             option.units > (productOptionModel?.units ?? 0) * product.quantity
           ) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
-                option.price
-              }, "option.units > productOptionModel?.units:", ${option.units} > ${
-                (productOptionModel?.units ?? 0) * product.quantity
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity
               }`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
@@ -617,11 +614,11 @@ export default class Orders {
         )
       }
 
-      const paymentTransaction = await Domain.SqlDB.sequelize.transaction({
-        logging: console.log,
-        autocommit: false,
-        isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
-      })
+      // const paymentTransaction = await Domain.SqlDB.sequelize.transaction({
+      //   logging: console.log,
+      //   autocommit: false,
+      //   isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
+      // })
       try {
         if (userCreditCardModel?.id && orderModel.id) {
           const vendorSettingsModel = contractModel.vendorSettings
@@ -680,7 +677,7 @@ export default class Orders {
             },
             {
               logging: console.log,
-              transaction: paymentTransaction
+              transaction
             }
           )
           if (!userPaymentModel) {
@@ -705,11 +702,11 @@ export default class Orders {
         console.log('orderpayment:')
         await orderModel.save({
           logging: console.log,
-          transaction: paymentTransaction
+          transaction
         })
-        await paymentTransaction.commit()
+        // await paymentTransaction.commit()
       } catch (exception: any) {
-        await paymentTransaction.rollback()
+        // await paymentTransaction.rollback()
         let error: Utils.iKomidaError
         if (exception instanceof Utils.iKomidaError) {
           error = exception
@@ -806,37 +803,37 @@ export default class Orders {
       console.log('order befor commited')
       await transaction.commit()
       console.log('order commited')
-      try {
-        const pNModels = contractModel?.pNs
-        if ((pNModels?.length ?? 0) === 1) {
-          const notification = new Utils.Notification(Utils.Notification.NEW_ORDER)
-          const message = new Types.Classes.CNotificationPayload()
-          message.notification = Utils.Notification.NEW_ORDER
-          message.data = new Types.Classes.CNotificationData()
-          message.data.method = notification.method
-          message.data.uri = notification.uri
-          message.data.logon = notification.logon
-          message.data.payload = orderId
-          const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
-          payload.method = 'send'
-          const payloadObject = new Types.Classes.CAMQPPayloadObject()
-          payloadObject.message = message
-          payloadObject.contractId = contractModel?.id
-          payload.object = payloadObject
+      // try {
+      //   const pNModels = contractModel?.pNs
+      //   if ((pNModels?.length ?? 0) === 1) {
+      //     const notification = Types.Classes.CNotification.fromObject(Utils.Notification.NEW_ORDER)
+      //     const message = new Types.Classes.CNotificationPayload()
+      //     message.notification = Utils.Notification.NEW_ORDER
+      //     message.data = new Types.Classes.CNotificationData()
+      //     message.data.method = notification.method
+      //     message.data.uri = notification.uri
+      //     message.data.logon = notification.logon
+      //     message.data.payload = orderId
+      //     const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
+      //     payload.method = 'send'
+      //     const payloadObject = new Types.Classes.CAMQPPayloadObject()
+      //     payloadObject.message = message
+      //     payloadObject.contractId = contractModel?.id
+      //     payload.object = payloadObject
 
-          const amqp = new Domain.RabbitMQ(this.logger)
-          await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
-          await amqp?.close()
-        } else {
-          this.logger.warn(`[NEW_ORDERS] - Dispositivo ou usuário não cadastrado para receber notificações push.`)
-        }
-      } catch (exception: any) {
-        const error = new Utils.iKomidaError(
-          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
-          exception
-        )
-        error.log(this.logger)
-      }
+      //     const amqp = new Domain.RabbitMQ(this.logger)
+      //     await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
+      //     await amqp?.close()
+      //   } else {
+      //     this.logger.warn(`[NEW_ORDERS] - Dispositivo ou usuário não cadastrado para receber notificações push.`)
+      //   }
+      // } catch (exception: any) {
+      //   const error = new Utils.iKomidaError(
+      //     Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
+      //     exception
+      //   )
+      //   error.log(this.logger)
+      // }
       return new Utils.Return(true, order)
     } catch (exception: any) {
       await transaction.rollback()
