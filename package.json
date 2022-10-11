@@ -1,6 +1,6 @@
 {
   "name": "ikomida-orders-service",
-  "version": "1.1.13-3",
+  "version": "1.1.14",
   "description": "ikomida orders service",
   "private": true,
   "module": "build/service.js",
@@ -27,7 +27,7 @@
   "author": "Khalid Ait Bellahs",
   "license": "UNLICENSED",
   "dependencies": {
-    "@ikomida/shared-backend": "^1.0.5",
+    "@ikomida/shared-backend": "^1.0.6",
     "body-parser": "^1.20.1",
     "cors": "^2.8.5",
     "express": "^4.18.2",
