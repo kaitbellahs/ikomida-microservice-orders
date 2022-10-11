@@ -1,7 +1,8 @@
 import { Domain, Utils, BackendTypes, Logics, Types, DBModels, Helpers, slugging } from '@ikomida/shared-backend'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidv4, validate as validateUUID } from 'uuid'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
 import _ from 'lodash'
+import { Includeable } from 'sequelize'
 
 export default class Orders {
   logger
@@ -195,9 +196,9 @@ export default class Orders {
         autocommit: false
       })
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
-      const productsIDs = [...new Set(payload?.products?.map(item => item.id))]
+      const productsIDs = [...new Set(payload.products?.map(item => item.id))]
       const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
-      for (const product of payload?.products ?? []) {
+      for (const product of payload.products ?? []) {
         productOptionsIDs.push({
           productId: product.id,
           optionsIds: new Set(
@@ -209,13 +210,13 @@ export default class Orders {
           )
         })
       }
-      const includeCoupon = payload?.coupon?.id
+      const includeCoupon: Includeable[] = payload.coupon?.id
         ? [
           {
             model: DBModels.CouponModel,
             required: false,
             where: {
-              id: payload?.coupon?.id,
+              id: payload.coupon?.id,
               quantity: {
                 [Domain.SqlDB.Op.gt]: 0
               },
@@ -227,6 +228,24 @@ export default class Orders {
           }
         ]
         : []
+      const userIncludes: Includeable[] = [
+        {
+          model: DBModels.AddressModel,
+          where: {
+            id: payload.address?.id
+          },
+          required: false
+        }
+      ]
+      if (validateUUID(payload.payment?.id ?? '')) {
+        userIncludes.push({
+          model: DBModels.UserCreditCardModel,
+          where: {
+            id: payload.payment?.id
+          },
+          required: false
+        })
+      }
       const contractModel = await DBModels.ContractModel.findOne({
         where: {
           ikomidaID: identity.ikomidaID
@@ -243,22 +262,7 @@ export default class Orders {
                 [Domain.SqlDB.Op.in]: [BackendTypes.Roles.CLIENT]
               }
             },
-            include: [
-              {
-                model: DBModels.UserCreditCardModel,
-                where: {
-                  id: payload.payment?.id
-                },
-                required: false
-              },
-              {
-                model: DBModels.AddressModel,
-                where: {
-                  id: payload.address?.id
-                },
-                required: false
-              }
-            ]
+            include: userIncludes
           },
           {
             model: DBModels.PlanModel,
@@ -372,7 +376,7 @@ export default class Orders {
       const addressModel = addressModels[0]
 
       let couponModel = null
-      if (payload?.coupon) {
+      if (payload.coupon) {
         const couponsResult = contractModel.coupons
         if (couponsResult?.length === 1) {
           couponModel = couponsResult?.[0]
@@ -380,7 +384,7 @@ export default class Orders {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID)
         }
       }
-      for (const product of payload?.products ?? []) {
+      for (const product of payload.products ?? []) {
         const filteredProduct = productModels.filter(element => element.id === product.id)
         if (filteredProduct.length !== 1) {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT)
@@ -489,7 +493,7 @@ export default class Orders {
           Number(product?.quantity)
       }
       const discount = Logics.Finances.calcDiscount(subtotal, couponModel?.value ?? 0, couponModel?.valueType)
-      if (!payload?.payment || !payload?.payment.id) {
+      if (!payload.payment || !payload.payment.id) {
         throw new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PAYMENT_METHOD_NOT_DEFINED
         )
@@ -510,7 +514,7 @@ export default class Orders {
         const calcDelivery = ((addressModel?.distance ?? 1) / 1000) * (vendorSettingsModel?.delivery ?? 0)
         delivery =
           calcDelivery < (vendorSettingsModel?.deliveryMin ?? 0) ? vendorSettingsModel?.deliveryMin : calcDelivery
-        if (delivery !== payload?.delivery) {
+        if (delivery !== payload.delivery) {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_DELIVERY_NOT_VALID)
         }
       }
@@ -569,8 +573,8 @@ export default class Orders {
         status: Types.Types.TOrderStatus.WAITING_PAYMENT,
         subtotal,
         discount,
-        locationLatitude: payload?.location?.latitude,
-        locationLongitude: payload?.location?.longitude,
+        locationLatitude: payload.location?.latitude,
+        locationLongitude: payload.location?.longitude,
         preparationMin: vendorSettingsModel?.preparationMin,
         preparationMax: vendorSettingsModel?.preparationMax,
         customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
@@ -847,9 +851,9 @@ export default class Orders {
     try {
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
       if (
-        !payload?.status ||
-        !payload?.id ||
-        ![Types.Types.TOrderStatus.CANCELED, Types.Types.TOrderStatus.DELIVERED].includes(payload?.status)
+        !payload.status ||
+        !payload.id ||
+        ![Types.Types.TOrderStatus.CANCELED, Types.Types.TOrderStatus.DELIVERED].includes(payload.status)
       ) {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS)
         return error.logAndReturn(this.logger)
@@ -880,7 +884,7 @@ export default class Orders {
                 model: DBModels.OrderModel,
                 required: true,
                 where: {
-                  id: payload?.id
+                  id: payload.id
                 },
                 include: [DBModels.UserPaymentModel]
               }
@@ -908,7 +912,7 @@ export default class Orders {
       if (
         (order?.status &&
           ![Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(order?.status) &&
-          Types.Types.TOrderStatus.CANCELED === payload?.status) ||
+          Types.Types.TOrderStatus.CANCELED === payload.status) ||
         (order?.status &&
           ![
             Types.Types.TOrderStatus.OPEN,
@@ -916,7 +920,7 @@ export default class Orders {
             Types.Types.TOrderStatus.WAITING_DELIVERY,
             Types.Types.TOrderStatus.IN_DELIVERY
           ].includes(order?.status) &&
-          Types.Types.TOrderStatus.DELIVERED === payload?.status)
+          Types.Types.TOrderStatus.DELIVERED === payload.status)
       ) {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS)
         return error.logAndReturn(this.logger)
@@ -937,7 +941,7 @@ export default class Orders {
       }
       if (
         order?.status &&
-        Types.Types.TOrderStatus.CANCELED === payload?.status &&
+        Types.Types.TOrderStatus.CANCELED === payload.status &&
         order?.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.CANCELED &&
         [Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(order?.status) &&
         order?.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
