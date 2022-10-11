@@ -1,6 +1,7 @@
 import { Domain, Utils, BackendTypes, Logics, Types, DBModels, Helpers, slugging } from '@ikomida/shared-backend'
 import { v4 as uuidv4 } from 'uuid'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
+import _ from 'lodash'
 
 export default class Orders {
   logger
@@ -13,6 +14,11 @@ export default class Orders {
   private IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST: IiKomidaErrorModel = {
     code: 'POS001',
     message: 'As opções do produto que você selecionou não foram localizadas!'
+  }
+
+  private IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_OBJECT: IiKomidaErrorModel = {
+    code: 'POS002',
+    message: 'O objeto do pedido encontra-se vazio!'
   }
 
   async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
@@ -180,12 +186,14 @@ export default class Orders {
   }
 
   async newOrder(identity: Types.Classes.CUser, input: any) {
-    const transaction = await Domain.SqlDB.sequelize.transaction({
-      logging: console.log,
-      autocommit: false,
-      isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
-    })
+    let transaction: Domain.SqlDB.Transaction | undefined = undefined
     try {
+      if (_.isEmpty(input)) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_OBJECT)
+      }
+      transaction = await Domain.SqlDB.sequelize.transaction({
+        autocommit: false
+      })
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
       const productsIDs = [...new Set(payload?.products?.map(item => item.id))]
       const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
@@ -223,7 +231,7 @@ export default class Orders {
         where: {
           ikomidaID: identity.ikomidaID
         },
-        logging: console.log,
+
         transaction,
         include: [
           {
@@ -336,10 +344,10 @@ export default class Orders {
       if (!vendorSettingsModel) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY)
       }
-      const object = {
+      const object: Types.Classes.CBusinessTime = Types.Classes.CBusinessTime.fromObject({
         hours: vendorSettingsModel?.businessHours,
         days: vendorSettingsModel?.businessDays
-      } as Types.Classes.CBusinessTime
+      })
       if (!Logics.DateTime.isBusinessTime(object)) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDER_SERVICE_NEW_ORDER_OUT_OF_SERVICE)
       }
@@ -377,7 +385,7 @@ export default class Orders {
         if (filteredProduct.length !== 1) {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT)
         }
-        if ((filteredProduct?.[0].quantity ?? 0) < (product?.quantity ?? 0)) {
+        if ((filteredProduct?.[0].quantity ?? 0) - (product?.quantity ?? 0) < 0) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_QUANTITY,
             filteredProduct[0].title
@@ -520,7 +528,6 @@ export default class Orders {
               quantity: product.quantity
             },
             {
-              logging: console.log,
               transaction
             }
           )
@@ -577,7 +584,7 @@ export default class Orders {
       }
       const orderModel: DBModels.OrderModel = await userModel.$create('order', orderPayload, {
         transaction,
-        logging: console.log,
+
         include: [
           DBModels.AddressModel,
           DBModels.CouponModel,
@@ -599,7 +606,6 @@ export default class Orders {
       })
       contractModel.lastOrderCustomID = orderModel.customID ?? 0
       await contractModel.save({
-        logging: console.log,
         transaction
       })
       if (couponModel) {
@@ -608,17 +614,11 @@ export default class Orders {
             quantity: 1
           },
           {
-            logging: console.log,
             transaction
           }
         )
       }
 
-      // const paymentTransaction = await Domain.SqlDB.sequelize.transaction({
-      //   logging: console.log,
-      //   autocommit: false,
-      //   isolationLevel: Domain.SqlDB.Transaction.ISOLATION_LEVELS.READ_UNCOMMITTED
-      // })
       try {
         if (userCreditCardModel?.id && orderModel.id) {
           const vendorSettingsModel = contractModel.vendorSettings
@@ -676,7 +676,6 @@ export default class Orders {
               orderId
             },
             {
-              logging: console.log,
               transaction
             }
           )
@@ -699,14 +698,10 @@ export default class Orders {
         } else {
           orderModel.status = Types.Types.TOrderStatus.OPEN
         }
-        console.log('orderpayment:')
         await orderModel.save({
-          logging: console.log,
           transaction
         })
-        // await paymentTransaction.commit()
       } catch (exception: any) {
-        // await paymentTransaction.rollback()
         let error: Utils.iKomidaError
         if (exception instanceof Utils.iKomidaError) {
           error = exception
@@ -718,6 +713,8 @@ export default class Orders {
         }
         throw error
       }
+
+      await transaction.commit()
 
       const orderProductModels: DBModels.OrderProductModel[] = orderModel.orderProducts ?? []
       const products =
@@ -798,45 +795,41 @@ export default class Orders {
         orderId,
         orderModel.createdAt.getTime()
       )
-      console.log('order:', order)
 
-      console.log('order befor commited')
-      await transaction.commit()
-      console.log('order commited')
-      // try {
-      //   const pNModels = contractModel?.pNs
-      //   if ((pNModels?.length ?? 0) === 1) {
-      //     const notification = Types.Classes.CNotification.fromObject(Utils.Notification.NEW_ORDER)
-      //     const message = new Types.Classes.CNotificationPayload()
-      //     message.notification = Utils.Notification.NEW_ORDER
-      //     message.data = new Types.Classes.CNotificationData()
-      //     message.data.method = notification.method
-      //     message.data.uri = notification.uri
-      //     message.data.logon = notification.logon
-      //     message.data.payload = orderId
-      //     const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
-      //     payload.method = 'send'
-      //     const payloadObject = new Types.Classes.CAMQPPayloadObject()
-      //     payloadObject.message = message
-      //     payloadObject.contractId = contractModel?.id
-      //     payload.object = payloadObject
+      try {
+        const pNModels = contractModel?.pNs
+        if ((pNModels?.length ?? 0) === 1) {
+          const notification = Types.Classes.CNotification.fromObject(Utils.Notification.NEW_ORDER)
+          const message = new Types.Classes.CNotificationPayload()
+          message.notification = notification
+          message.data = new Types.Classes.CNotificationData()
+          message.data.method = notification.method
+          message.data.uri = notification.uri
+          message.data.logon = notification.logon
+          message.data.payload = orderId
+          const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
+          payload.method = 'send'
+          const payloadObject = new Types.Classes.CAMQPPayloadObject()
+          payloadObject.message = message
+          payloadObject.contractId = contractModel?.id
+          payload.object = payloadObject
 
-      //     const amqp = new Domain.RabbitMQ(this.logger)
-      //     await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
-      //     await amqp?.close()
-      //   } else {
-      //     this.logger.warn(`[NEW_ORDERS] - Dispositivo ou usuário não cadastrado para receber notificações push.`)
-      //   }
-      // } catch (exception: any) {
-      //   const error = new Utils.iKomidaError(
-      //     Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
-      //     exception
-      //   )
-      //   error.log(this.logger)
-      // }
+          const amqp = new Domain.RabbitMQ(this.logger)
+          await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
+          await amqp?.close()
+        } else {
+          this.logger.warn(`[NEW_ORDERS] - Dispositivo ou usuário não cadastrado para receber notificações push.`)
+        }
+      } catch (exception: any) {
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
+          exception
+        )
+        error.log(this.logger)
+      }
       return new Utils.Return(true, order)
     } catch (exception: any) {
-      await transaction.rollback()
+      await transaction?.rollback()
       let error: Utils.iKomidaError
       if (exception instanceof Utils.iKomidaError) {
         error = exception
