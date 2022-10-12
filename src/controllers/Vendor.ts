@@ -134,6 +134,7 @@ export default class Orders {
             undefined,
             orderProductOptions,
             undefined,
+            orderProduct.observation,
             orderProduct?.productId
           )
         }) ?? []

@@ -126,7 +126,9 @@ export default class Orders {
             undefined,
             undefined,
             undefined,
-            orderProductOptions
+            orderProductOptions,
+            undefined,
+            orderProduct.observation
           )
         }) ?? []
       const address = Types.Classes.CAddress.init(
@@ -562,6 +564,7 @@ export default class Orders {
             price: productModel.price,
             discount: productModel.discount,
             quantity: product.quantity,
+            observation: product.observation,
             orderId,
             userId: userModel.id,
             contractId: contractModel.id,
@@ -724,7 +727,9 @@ export default class Orders {
             undefined,
             undefined,
             undefined,
-            orderProductOptions
+            orderProductOptions,
+            undefined,
+            orderProduct.observation
           )
         }) ?? []
       const address = Types.Classes.CAddress.init(
