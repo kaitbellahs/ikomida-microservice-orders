@@ -213,13 +213,13 @@
   resolved "https://registry.yarnpkg.com/@humanwhocodes/object-schema/-/object-schema-1.2.1.tgz#b520529ec21d8e5945a1851dfd1c32e94e39ff45"
   integrity sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==
 
-"@ikomida/shared-backend@^1.0.9":
-  version "1.0.9"
-  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-backend/-/@ikomida/shared-backend-1.0.9.tgz#beefeb35f9742f66d49b1daf8d1f5ff8987690fe"
-  integrity sha512-FCI2TESsmBxAufFED1AcxG6LSJvqwTWYK/OSqIKn5Bf9HVbfb5C2x95uwEx057x5rdYk52jW+CTeeYoOd3OsLg==
+"@ikomida/shared-backend@^1.0.12":
+  version "1.0.12"
+  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-backend/-/@ikomida/shared-backend-1.0.12.tgz#41d90c976dfcb578fad0b859bb968cc610f380bd"
+  integrity sha512-ASAhO5UKWJHavhb6ErOX36JZ6sBXn0Xv0lm7WOnaqkEGPPlNzZyWT8NIbspUjHGYAZVqTlObBK0VzxY/s7zJbQ==
   dependencies:
     "@ikomida/shared-logics" "^0.2.3"
-    "@ikomida/shared-types" "^1.2.2"
+    "@ikomida/shared-types" "^1.2.4"
     amqplib "^0.10.3"
     axios "^1.1.2"
     bcrypt "^5.1.0"
@@ -242,10 +242,10 @@
   dependencies:
     luxon "^3.0.4"
 
-"@ikomida/shared-types@^1.2.2":
-  version "1.2.2"
-  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-types/-/@ikomida/shared-types-1.2.2.tgz#d79cee78ec11e395b049b8611699dae112d2d07d"
-  integrity sha512-g+7pk73YGukQ1tbwaNjFpRYDNPKJ7DujEOWwrwWg1texGFXuka1U35K7epP0lhvaquqJ9o6f4D3p3zyltVgUcg==
+"@ikomida/shared-types@^1.2.4":
+  version "1.2.4"
+  resolved "https://us-central1-npm.pkg.dev/ikomida-dev/node/@ikomida/shared-types/-/@ikomida/shared-types-1.2.4.tgz#faf63d0764202246f899be84e9cf79bea821afe1"
+  integrity sha512-es7syLNzE3SGsKuMjNb5W8ToG+TDZj6ftsdgR6W8EnkjaPsaC0B8K2BbSx1HIVat4ihTGZPJ54s61F8tsGw/ZQ==
 
 "@jridgewell/gen-mapping@^0.3.0":
   version "0.3.2"
@@ -3483,10 +3483,10 @@ rollup-plugin-terser@^7.0.2:
     serialize-javascript "^4.0.0"
     terser "^5.0.0"
 
-rollup@^3.0.0:
-  version "3.0.0"
-  resolved "https://registry.yarnpkg.com/rollup/-/rollup-3.0.0.tgz#3e12b7cc4843615c855288c091686256c0a8e09d"
-  integrity sha512-iVomS2lySi4BM2QJb7lGZBjSndUEs6Ip+VDl25jcbM99VI5vWeEitvUSiNQkQkwqEiI4515m5shjyuwPcXS5Dg==
+rollup@^3.1.0:
+  version "3.1.0"
+  resolved "https://registry.yarnpkg.com/rollup/-/rollup-3.1.0.tgz#1310c764ee3187cd39d936c85107f4bfb0cae3d7"
+  integrity sha512-GEvr+COcXicr4nuih6mpt2Eydq5lZ72z0RrKx1H4/Q2ouT34OHrIIJ9OUj2sZqUhq7QL8Hp8Q8BoWbjL/6ccRQ==
   optionalDependencies:
     fsevents "~2.3.2"
 

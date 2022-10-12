@@ -23,7 +23,7 @@ const port = process?.env?.PORT || 80
 app.get('/orders/:timestamp', async (req, res) => {
   const identity: Types.Classes.CUser = Types.Classes.CUser.fromObject(req.headers?.identity)
   const uri = req?.originalUrl?.split('/')
-  const isHistory = uri?.[uri?.length - 1] === 'history'
+  const isHistory = uri?.at(-1) === 'history'
   let payload
   switch (BackendTypes.Roles.valueOf(identity?.role)) {
     case BackendTypes.Roles.CLIENT:
