@@ -782,7 +782,9 @@ export default class Orders {
       try {
         const pNModels = contractModel?.pNs
         if ((pNModels?.length ?? 0) === 1) {
-          const notification = Types.Classes.CNotification.fromObject(Utils.Notification.NEW_ORDER)
+          const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(
+            Utils.Notification.NEW_ORDER
+          )
           const message = new Types.Classes.CNotificationPayload()
           message.notification = notification
           message.data = new Types.Classes.CNotificationData()
@@ -950,7 +952,9 @@ export default class Orders {
       try {
         const pNModel = contractModel?.pNs?.[0]
         if (pNModel) {
-          const notification = new Utils.Notification(Utils.Notification.ORDER_UPDATED)
+          const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(
+            Utils.Notification.ORDER_UPDATED
+          )
           const message = new Types.Classes.CNotificationPayload()
           message.notification = notification
           message.data = new Types.Classes.CNotificationData()
