@@ -4,6 +4,7 @@ import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaErr
 import _ from 'lodash'
 import axios from 'axios'
 import { Includeable } from 'sequelize'
+import PushNotification from '../helpers/PushNotification'
 
 export default class Orders {
   logger
@@ -36,10 +37,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -394,21 +395,21 @@ export default class Orders {
       }
       const includeCoupon: Includeable[] = payload.coupon?.id
         ? [
-          {
-            model: DBModels.CouponModel,
-            required: false,
-            where: {
-              id: payload.coupon?.id,
-              quantity: {
-                [Domain.SqlDB.Op.gt]: 0
+            {
+              model: DBModels.CouponModel,
+              required: false,
+              where: {
+                id: payload.coupon?.id,
+                quantity: {
+                  [Domain.SqlDB.Op.gt]: 0
+                },
+                validity: {
+                  [Domain.SqlDB.Op.gt]: new Date()
+                }
               },
-              validity: {
-                [Domain.SqlDB.Op.gt]: new Date()
-              }
-            },
-            limit: 2
-          }
-        ]
+              limit: 2
+            }
+          ]
         : []
       const userIncludes: Includeable[] = [
         {
@@ -577,27 +578,28 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            filteredProduct?.[0]?.price ?? 0,
-            filteredProduct?.[0]?.discount ?? 0,
-            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-          ) !==
+            Logics.Finances.calcDiscount(
+              filteredProduct?.[0]?.price ?? 0,
+              filteredProduct?.[0]?.discount ?? 0,
+              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+            ) !==
           (product?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            product?.price ?? 0,
-            product?.discount ?? 0,
-            product?.discountType ?? Types.Types.TDiscount.NO
-          )
+            Logics.Finances.calcDiscount(
+              product?.price ?? 0,
+              product?.discount ?? 0,
+              product?.discountType ?? Types.Types.TDiscount.NO
+            )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
-              ? Logics.Finances.calcDiscount(
-                product.price ?? 0,
-                product?.discount ?? 0,
-                product?.discountType ?? Types.Types.TDiscount.NO
-              )
-              : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
+              couponModel
+                ? Logics.Finances.calcDiscount(
+                    product.price ?? 0,
+                    product?.discount ?? 0,
+                    product?.discountType ?? Types.Types.TDiscount.NO
+                  )
+                : product.price
             }`
           )
         }
@@ -647,8 +649,10 @@ export default class Orders {
             option.units > (productOptionModel?.units ?? 0) * product.quantity
           ) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
-              }, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
+                option.price
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${
+                (productOptionModel?.units ?? 0) * product.quantity
               }`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
@@ -961,31 +965,8 @@ export default class Orders {
       )
 
       try {
-        const pNModels = contractModel?.pNs
-        if ((pNModels?.length ?? 0) === 1) {
-          const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(
-            Utils.Notification.NEW_ORDER
-          )
-          const message = new Types.Classes.CNotificationPayload()
-          message.notification = notification
-          message.data = new Types.Classes.CNotificationData()
-          message.data.method = notification.method
-          message.data.uri = notification.uri
-          message.data.logon = notification.logon
-          message.data.payload = orderId
-          const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
-          payload.method = 'send'
-          const payloadObject = new Types.Classes.CAMQPPayloadObject()
-          payloadObject.message = message
-          payloadObject.contractId = contractModel?.id
-          payload.object = payloadObject
-
-          const amqp = new Domain.RabbitMQ(this.logger)
-          await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
-          await amqp?.close()
-        } else {
-          this.logger.warn(`[NEW_ORDERS] - Dispositivo ou usuário não cadastrado para receber notificações push.`)
-        }
+        const pn = new PushNotification(this.logger)
+        await pn.sendNotification(Utils.Notification.NEW_ORDER, orderId, contractModel?.id)
       } catch (exception: any) {
         const error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
@@ -1025,13 +1006,6 @@ export default class Orders {
           ikomidaID: identity.ikomidaID
         },
         include: [
-          {
-            model: DBModels.PNModel,
-            where: {
-              role: BackendTypes.Roles.VENDOR
-            },
-            required: false
-          },
           {
             model: DBModels.UserModel,
             required: true,
@@ -1131,33 +1105,8 @@ export default class Orders {
         await order.save()
       }
       try {
-        const pNModel = contractModel?.pNs?.[0]
-        if (pNModel) {
-          const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(
-            Utils.Notification.ORDER_UPDATED
-          )
-          const message = new Types.Classes.CNotificationPayload()
-          message.notification = notification
-          message.data = new Types.Classes.CNotificationData()
-          message.data.method = notification.method
-          message.data.uri = notification.uri
-          message.data.logon = notification.logon
-          message.data.payload = order?.id
-          const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
-          payload.method = 'send'
-          const payloadObject = new Types.Classes.CAMQPPayloadObject()
-          payloadObject.message = message
-          payloadObject.userId = order?.user?.id
-          payloadObject.contractId = contractModel?.id
-          payload.object = payloadObject
-          const amqp = new Domain.RabbitMQ(this.logger)
-          await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
-          await amqp?.close()
-        }
-        return new Utils.Return(
-          true,
-          Types.Classes.COrder.fromObject({ id: order?.id, status: order?.status, finishedAt: order?.finishedAt })
-        )
+        const pn = new PushNotification(this.logger)
+        await pn.sendNotification(Utils.Notification.ORDER_UPDATED, order?.id, contractModel?.id, order?.user?.id)
       } catch (exception: any) {
         const error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
@@ -1165,6 +1114,10 @@ export default class Orders {
         )
         error.log(this.logger)
       }
+      return new Utils.Return(
+        true,
+        Types.Classes.COrder.fromObject({ id: order?.id, status: order?.status, finishedAt: order?.finishedAt })
+      )
     } catch (exception: any) {
       const error = new Utils.iKomidaError(
         Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
