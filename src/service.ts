@@ -22,8 +22,8 @@ const port = process?.env?.PORT || 80
 
 app.get('/orders/:timestamp', async (req, res) => {
   const identity: Types.Classes.CUser = Types.Classes.CUser.fromObject(req.headers?.identity)
-  const uri = req?.originalUrl?.split('/')
-  const isHistory = uri?.at(-1) === 'history'
+  // const uri = req?.originalUrl?.split('/')
+  // const isHistory = uri?.at(-1) === 'history'
   let payload
   switch (BackendTypes.Roles.valueOf(identity?.role)) {
     case BackendTypes.Roles.CLIENT:
@@ -33,6 +33,22 @@ app.get('/orders/:timestamp', async (req, res) => {
     case BackendTypes.Roles.VENDOR:
     case BackendTypes.Roles.STAFF:
       payload = await vendor.getOrders(identity, Number(req.params?.timestamp) ?? 0)
+      break
+  }
+  res.status(payload?.success ? 200 : 404).sendResponse(payload)
+})
+
+app.get('/order/:id', async (req, res) => {
+  const identity: Types.Classes.CUser = Types.Classes.CUser.fromObject(req.headers?.identity)
+  let payload
+  switch (BackendTypes.Roles.valueOf(identity?.role)) {
+    case BackendTypes.Roles.CLIENT:
+      payload = await user.getOrder(identity, req.params?.id ?? '')
+      break
+    case BackendTypes.Roles.ADMIN:
+    case BackendTypes.Roles.VENDOR:
+    case BackendTypes.Roles.STAFF:
+      payload = await vendor.getOrder(identity, req.params?.id ?? '')
       break
   }
   res.status(payload?.success ? 200 : 404).sendResponse(payload)
