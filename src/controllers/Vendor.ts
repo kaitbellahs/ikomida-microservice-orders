@@ -1,5 +1,6 @@
 import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/shared-backend'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
+import PushNotification from '../helpers/PushNotification'
 
 const orderOptions = [
   Types.Types.TOrderStatus.ACCEPTED,
@@ -420,7 +421,19 @@ export default class Orders {
             where: {
               id: payload?.id
             },
-            include: [DBModels.UserPaymentModel, DBModels.UserModel]
+            include: [
+              DBModels.UserPaymentModel,
+              {
+                model: DBModels.UserModel,
+                required: true,
+                include: [
+                  {
+                    model: DBModels.PNModel,
+                    required: false
+                  }
+                ]
+              }
+            ]
           }
         ]
       })
@@ -488,26 +501,10 @@ export default class Orders {
       order.status = payload.status
       await order.save()
       try {
-        const pNModel = await order.user?.$get('pN')
+        const pNModel = order.user?.pN
         if (pNModel) {
-          const notification = new Utils.Notification(Utils.Notification.ORDER_UPDATED)
-          const message = new Types.Classes.CNotificationPayload()
-          message.notification = notification
-          message.data = new Types.Classes.CNotificationData()
-          message.data.method = notification.method
-          message.data.uri = notification.uri
-          message.data.logon = notification.logon
-          message.data.payload = order.id
-          const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
-          payload.method = 'send'
-          const payloadObject = new Types.Classes.CAMQPPayloadObject()
-          payloadObject.message = message
-          payloadObject.userId = order.user?.id
-          payloadObject.contractId = contractModel?.id
-          payload.object = payloadObject
-          const amqp = new Domain.RabbitMQ(this.logger)
-          await amqp?.publish(Domain.RabbitMQ.PUSH_NOTIFICATION_QUEUE, payload)
-          await amqp?.close()
+          const pn = new PushNotification(this.logger)
+          await pn.sendNotification(Utils.Notification.ORDER_UPDATED, order?.id, contractModel?.id, order?.user?.id)
         }
       } catch (exception: any) {
         const error = new Utils.iKomidaError(
