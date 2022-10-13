@@ -1,4 +1,5 @@
 import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/shared-backend'
+import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
 
 const orderOptions = [
   Types.Types.TOrderStatus.ACCEPTED,
@@ -14,6 +15,15 @@ export default class Orders {
 
   constructor(logger: Utils.Logger) {
     this.logger = logger
+  }
+
+  GET_ORDER_INVALIDE_UUID: IiKomidaErrorModel = {
+    code: 'IMO001',
+    message: 'O pedido não foi localizado.'
+  }
+  GET_ORDER_MORE_THEN_ONE: IiKomidaErrorModel = {
+    code: 'IMO002',
+    message: 'O pedido não foi localizado.'
   }
 
   async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
@@ -194,6 +204,192 @@ export default class Orders {
       true,
       orders?.filter(order => order !== null)?.sort((item1, item2) => (item2?.timestamp ?? 0) - (item1?.timestamp ?? 0))
     )
+  }
+
+  async getOrder(identity: Types.Classes.CUser, id: string) {
+    try {
+      if (!Logics.Validations.validateUUID(id)) {
+        throw new Utils.iKomidaError(this.GET_ORDER_INVALIDE_UUID)
+      }
+      const contractModel = await DBModels.ContractModel.findOne({
+        where: {
+          ikomidaID: identity.ikomidaID
+        },
+        include: [
+          {
+            model: DBModels.UserModel,
+            required: true,
+            where: {
+              id: identity.id,
+              role: {
+                [Domain.SqlDB.Op.in]: [BackendTypes.Roles.ADMIN, BackendTypes.Roles.VENDOR, BackendTypes.Roles.STAFF]
+              }
+            }
+          },
+          {
+            model: DBModels.OrderModel,
+            required: false,
+            include: [
+              {
+                model: DBModels.OrderProductModel,
+                required: false,
+                include: [
+                  {
+                    model: DBModels.OrderProductOptionModel,
+                    required: false
+                  }
+                ]
+              },
+              {
+                model: DBModels.UserModel,
+                required: true
+              },
+              {
+                model: DBModels.UserPaymentModel,
+                required: false,
+                include: [
+                  {
+                    model: DBModels.UserCreditCardModel,
+                    required: false
+                  }
+                ]
+              },
+              {
+                model: DBModels.AddressModel,
+                required: false
+              },
+              {
+                model: DBModels.CouponModel,
+                required: false
+              }
+            ],
+            limit: 2,
+            where: {
+              id
+            }
+          }
+        ]
+      })
+      if (!contractModel) {
+        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_GET_ORDERS_INVALID_CONTRACT)
+      }
+      const orderModels = contractModel?.orders
+      if (orderModels?.length !== 1) {
+        throw new Utils.iKomidaError(this.GET_ORDER_MORE_THEN_ONE)
+      }
+      const orderModel = orderModels[0]
+      let userCreditCard
+      try {
+        userCreditCard = orderModel?.userPayment?.userCreditCard
+      } catch (error: any) {
+        this.logger.error(error)
+      }
+      const user = Types.Classes.CUser.init(
+        '',
+        orderModel.user?.name ?? '-',
+        orderModel.user?.lastName ?? '-',
+        orderModel.user?.identity ?? '-',
+        orderModel.user?.email ?? '-',
+        orderModel.user?.phone ?? '-',
+        String(orderModel.user?.areaCode),
+        ''
+      )
+      const products =
+        orderModel.orderProducts?.map(orderProduct => {
+          const orderProductOptions =
+            orderProduct.orderProductOptions?.map(orderProductOption => {
+              return Types.Classes.CProductOption.init(
+                orderProductOption.name ?? '-',
+                false,
+                orderProductOption.price ?? 0,
+                orderProductOption.units ?? 0,
+                0,
+                undefined,
+                orderProductOption.productOptionId
+              )
+            }) ?? []
+          return Types.Classes.CProduct.init(
+            orderProduct?.title ?? '-',
+            orderProduct?.price ?? 0,
+            orderProduct?.discount ?? 0,
+            orderProduct?.discountType ?? Types.Types.TDiscount.NO,
+            orderProduct?.quantity ?? 0,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            orderProductOptions,
+            undefined,
+            orderProduct.observation,
+            orderProduct?.productId
+          )
+        }) ?? []
+      const address = Types.Classes.CAddress.init(
+        orderModel.address?.postalCode ?? '-',
+        orderModel.address?.street ?? '-',
+        orderModel.address?.neighborhood ?? '-',
+        orderModel.address?.city ?? '-',
+        orderModel.address?.stat ?? '-',
+        orderModel.address?.number,
+        orderModel.address?.complement,
+        orderModel.address?.kind,
+        orderModel.address?.reference,
+        orderModel.address?.distance,
+        orderModel.address?.duration
+      )
+
+      const payment = Types.Classes.CPaymentMethod.init(
+        orderModel?.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+        userCreditCard?.brand ?? 'Unknown',
+        userCreditCard?.lastDigits ?? '',
+        userCreditCard?.firstDigits ?? ''
+      )
+
+      const preparation = Types.Classes.COrderPreparation.init(
+        (orderModel?.preparationMin ?? 0) * 60,
+        (orderModel?.preparationMax ?? 0) * 60
+      )
+
+      const coupon = Types.Classes.CCoupon.init(
+        orderModel.coupon?.name ?? '-',
+        orderModel.coupon?.value ?? 0,
+        orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
+      )
+
+      const order = Types.Classes.COrder.init(
+        orderModel.subtotal ?? 0,
+        orderModel.discount ?? 0,
+        orderModel.delivery ?? 0,
+        products,
+        address,
+        orderModel.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+        preparation,
+        coupon,
+        orderModel.createdAt,
+        orderModel.customID,
+        orderModel.status,
+        orderModel.finishedAt,
+        payment,
+        user,
+        orderModel.id,
+        orderModel?.createdAt.getTime()
+      )
+      return new Utils.Return(true, order)
+    } catch (exception: any) {
+      let error: Utils.iKomidaError
+      if (exception instanceof Utils.iKomidaError) {
+        error = exception
+      } else {
+        error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_EXCEPTION,
+          exception
+        )
+      }
+      return error.logAndReturn(this.logger)
+    }
   }
 
   async changeOrderStatus(identity: Types.Classes.CUser, input: any) {
