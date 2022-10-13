@@ -31,10 +31,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -421,18 +421,19 @@ export default class Orders {
             where: {
               id: payload?.id
             },
-            include: [
-              DBModels.UserPaymentModel,
-              {
-                model: DBModels.UserModel,
-                required: true,
-                include: [
-                  {
-                    model: DBModels.PNModel,
-                    required: false
-                  }
-                ]
-              }
+            include: [{
+              model: DBModels.UserPaymentModel,
+              required: false
+            }, {
+              model: DBModels.UserModel,
+              required: true,
+              include: [
+                {
+                  model: DBModels.PNModel,
+                  required: false
+                }
+              ]
+            }
             ]
           }
         ]
