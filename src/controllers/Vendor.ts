@@ -31,10 +31,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -422,19 +422,21 @@ export default class Orders {
             where: {
               id: payload?.id
             },
-            include: [{
-              model: DBModels.UserPaymentModel,
-              required: false
-            }, {
-              model: DBModels.UserModel,
-              required: true,
-              include: [
-                {
-                  model: DBModels.PNModel,
-                  required: false
-                }
-              ]
-            }
+            include: [
+              {
+                model: DBModels.UserPaymentModel,
+                required: false
+              },
+              {
+                model: DBModels.UserModel,
+                required: true,
+                include: [
+                  {
+                    model: DBModels.PNModel,
+                    required: false
+                  }
+                ]
+              }
             ]
           }
         ]
@@ -506,7 +508,13 @@ export default class Orders {
         const pNModel = order.user?.pN
         if (pNModel) {
           const pn = new PushNotification(this.logger)
-          await pn.sendNotification(Utils.Notification.ORDER_UPDATED, order?.id, contractModel?.id, order?.user?.id)
+          await pn.sendNotification(
+            Utils.Notification.USER_ORDER_UPDATED,
+            order?.id,
+            contractModel?.id,
+            order?.user?.id,
+            payload.status.name
+          )
         }
       } catch (exception: any) {
         const error = new Utils.iKomidaError(
