@@ -6,14 +6,22 @@ export default class PushNotification {
     this.logger = logger
   }
 
-  async sendNotification(input: Types.Classes.CNotification, orderId?: string, contractId?: string, userId?: string) {
+  async sendNotification(
+    input: Types.Classes.CNotification,
+    orderId?: string,
+    contractId?: string,
+    userId?: string,
+    ...args: any[]
+  ) {
     const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(input)
+    const managedNotification = new Utils.Notification(notification, ...args)
+    console.log('managedNotification:', managedNotification)
     const message = new Types.Classes.CNotificationPayload()
-    message.notification = notification
+    message.notification = managedNotification
     message.data = new Types.Classes.CNotificationData()
-    message.data.method = notification.method
-    message.data.uri = notification.uri
-    message.data.logon = notification.logon
+    message.data.method = managedNotification.method
+    message.data.uri = managedNotification.uri
+    message.data.logon = managedNotification.logon
     message.data.payload = orderId
     const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
     payload.method = 'send'
