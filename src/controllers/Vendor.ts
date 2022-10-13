@@ -1,6 +1,6 @@
 import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/shared-backend'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
-import PushNotification from '../helpers/PushNotification'
+import PushNotification from '../helpers/PushNotification.js'
 
 const orderOptions = [
   Types.Types.TOrderStatus.ACCEPTED,
@@ -401,6 +401,7 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       const contractModel = await DBModels.ContractModel.findOne({
+        subQuery: false,
         where: {
           ikomidaID: identity.ikomidaID
         },
