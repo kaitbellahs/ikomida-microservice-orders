@@ -31,10 +31,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -456,7 +456,7 @@ export default class Orders {
         )
         return error.logAndReturn(this.logger)
       }
-      const orders = await contractModel.orders
+      const orders = contractModel.orders
       let order = null
       if (!orders || orders.length !== 1) {
         const error = new Utils.iKomidaError(
