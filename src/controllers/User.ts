@@ -1108,7 +1108,7 @@ export default class Orders {
           Utils.Notification.VENDOR_ORDER_UPDATED,
           order?.id,
           contractModel?.id,
-          order?.user?.id,
+          undefined,
           order?.customID,
           payload.status.name
         )
