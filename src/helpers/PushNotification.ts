@@ -15,7 +15,6 @@ export default class PushNotification {
   ) {
     const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(input)
     const managedNotification = new Utils.Notification(notification, ...args)
-    console.log('managedNotification:', managedNotification)
     const message = new Types.Classes.CNotificationPayload()
     message.notification = managedNotification
     message.data = new Types.Classes.CNotificationData()

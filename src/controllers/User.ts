@@ -222,6 +222,10 @@ export default class Orders {
               {
                 model: DBModels.OrderModel,
                 required: false,
+                limit: 2,
+                where: {
+                  id
+                },
                 include: [
                   {
                     model: DBModels.OrderProductModel,
@@ -251,11 +255,7 @@ export default class Orders {
                     model: DBModels.CouponModel,
                     required: false
                   }
-                ],
-                limit: 2,
-                where: {
-                  id
-                }
+                ]
               }
             ]
           }
@@ -270,7 +270,8 @@ export default class Orders {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_GET_ORDERS_INVALID_USER)
         return error.logAndReturn(this.logger)
       }
-      const orderModels = contractModel?.orders
+      const userModel = userModels[0]
+      const orderModels = userModel?.orders
       if (orderModels?.length !== 1) {
         throw new Utils.iKomidaError(this.GET_ORDER_MORE_THEN_ONE)
       }
