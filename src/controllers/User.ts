@@ -1112,7 +1112,7 @@ export default class Orders {
           order?.id,
           contractModel?.id,
           order?.user?.id,
-          order?.id,
+          order?.customID,
           payload.status.name
         )
       } catch (exception: any) {
