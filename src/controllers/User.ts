@@ -37,10 +37,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -74,20 +74,24 @@ export default class Orders {
                 {
                   model: DBModels.UserPaymentModel,
                   required: false,
+                  paranoid: false,
                   include: [
                     {
                       model: DBModels.UserCreditCardModel,
-                      required: false
+                      required: false,
+                      paranoid: false
                     }
                   ]
                 },
                 {
                   model: DBModels.AddressModel,
-                  required: false
+                  required: false,
+                  paranoid: false
                 },
                 {
                   model: DBModels.CouponModel,
-                  required: false
+                  required: false,
+                  paranoid: false
                 }
               ],
               order: [['createdAt', 'DESC']],
@@ -240,20 +244,24 @@ export default class Orders {
                   {
                     model: DBModels.UserPaymentModel,
                     required: false,
+                    paranoid: false,
                     include: [
                       {
                         model: DBModels.UserCreditCardModel,
-                        required: false
+                        required: false,
+                        paranoid: false
                       }
                     ]
                   },
                   {
                     model: DBModels.AddressModel,
-                    required: false
+                    required: false,
+                    paranoid: false
                   },
                   {
                     model: DBModels.CouponModel,
-                    required: false
+                    required: false,
+                    paranoid: false
                   }
                 ]
               }
@@ -396,21 +404,21 @@ export default class Orders {
       }
       const includeCoupon: Includeable[] = payload.coupon?.id
         ? [
-          {
-            model: DBModels.CouponModel,
-            required: false,
-            where: {
-              id: payload.coupon?.id,
-              quantity: {
-                [Domain.SqlDB.Op.gt]: 0
+            {
+              model: DBModels.CouponModel,
+              required: false,
+              where: {
+                id: payload.coupon?.id,
+                quantity: {
+                  [Domain.SqlDB.Op.gt]: 0
+                },
+                validity: {
+                  [Domain.SqlDB.Op.gt]: new Date()
+                }
               },
-              validity: {
-                [Domain.SqlDB.Op.gt]: new Date()
-              }
-            },
-            limit: 2
-          }
-        ]
+              limit: 2
+            }
+          ]
         : []
       const userIncludes: Includeable[] = [
         {
@@ -511,7 +519,7 @@ export default class Orders {
       }
 
       const ordersLimit = contractModel?.plan?.orders ?? -1
-      if (ordersLimit !== 0 && (contractModel?.orders?.length ?? 0) >= ordersLimit) {
+      if (ordersLimit !== -1 && (contractModel?.orders?.length ?? 0) >= ordersLimit) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_LIMIT_EXCEEDED, ordersLimit)
       }
 
@@ -520,7 +528,7 @@ export default class Orders {
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const billingLimit = contractModel?.plan?.billing ?? 0 ?? -1
-      if (billingLimit !== 0 && (billing ?? 0) >= billingLimit) {
+      if (billingLimit !== -1 && (billing ?? 0) >= billingLimit) {
         throw new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_BILLING_LIMIT_EXCEEDED,
           billingLimit
@@ -579,27 +587,28 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            filteredProduct?.[0]?.price ?? 0,
-            filteredProduct?.[0]?.discount ?? 0,
-            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-          ) !==
+            Logics.Finances.calcDiscount(
+              filteredProduct?.[0]?.price ?? 0,
+              filteredProduct?.[0]?.discount ?? 0,
+              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+            ) !==
           (product?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            product?.price ?? 0,
-            product?.discount ?? 0,
-            product?.discountType ?? Types.Types.TDiscount.NO
-          )
+            Logics.Finances.calcDiscount(
+              product?.price ?? 0,
+              product?.discount ?? 0,
+              product?.discountType ?? Types.Types.TDiscount.NO
+            )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
-              ? Logics.Finances.calcDiscount(
-                product.price ?? 0,
-                product?.discount ?? 0,
-                product?.discountType ?? Types.Types.TDiscount.NO
-              )
-              : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
+              couponModel
+                ? Logics.Finances.calcDiscount(
+                    product.price ?? 0,
+                    product?.discount ?? 0,
+                    product?.discountType ?? Types.Types.TDiscount.NO
+                  )
+                : product.price
             }`
           )
         }
@@ -649,8 +658,10 @@ export default class Orders {
             option.units > (productOptionModel?.units ?? 0) * product.quantity
           ) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
-              }, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0) * product.quantity
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
+                option.price
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${
+                (productOptionModel?.units ?? 0) * product.quantity
               }`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)

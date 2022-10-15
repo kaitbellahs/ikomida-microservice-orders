@@ -16,21 +16,12 @@ if($args.count -gt 1){
     $nocache=$args[1]
 }
 $GOOGLE_SERVICE_ACCOUNT="REMOVED_GCP_SERVICE_ACCOUNT_KEY"
-# yarn glogin
-# ThrowOnNativeFailure
-# yarn add @ikomida/shared-backend@latest
-# ThrowOnNativeFailure
 $GCLOUD_LOCATION="us-central1"
 $NAME="orders"
 $TYPE="microservice"
 $PACKAGE_VERSION="latest"
-# docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/docker/orders-microservice-image:latest . --build-arg GOOGLE_SERVICE_ACCOUNT="$GOOGLE_SERVICE_ACCOUNT"  --build-arg NODEENV=devlopment --build-arg PROJECT_ID=$PROJECT_ID $nocache
-docker buildx build -o type=registry --cache-to=type=registry --cache-from=type=registry --build-arg BUILDKIT_INLINE_CACHE=1 -t us-central1-docker.pkg.dev/$PROJECT_ID/docker/orders-microservice-image:latest . --build-arg GOOGLE_SERVICE_ACCOUNT="$GOOGLE_SERVICE_ACCOUNT"  --build-arg NODEENV=devlopment --build-arg PROJECT_ID=$PROJECT_ID $nocache
-ThrowOnNativeFailure
-# ThrowOnNativeFailure
-# docker push us-central1-docker.pkg.dev/$PROJECT_ID/docker/orders-microservice-image:latest
-# ThrowOnNativeFailure
-kubectl -n ikomida delete deploy orders-microservice
+docker buildx build -o type=registry --cache-to=type=registry --cache-from=type=registry --build-arg BUILDKIT_INLINE_CACHE=1 -t us-central1-docker.pkg.dev/$PROJECT_ID/docker/$NAME-$TYPE-image:$PACKAGE_VERSION . --build-arg GOOGLE_SERVICE_ACCOUNT="$GOOGLE_SERVICE_ACCOUNT"  --build-arg NODEENV=devlopment --build-arg PROJECT_ID=$PROJECT_ID $nocache
+kubectl -n ikomida delete deploy $NAME-$TYPE
 
 Get-ChildItem ".\k8s\" -Filter *.yaml | 
 Foreach-Object {
