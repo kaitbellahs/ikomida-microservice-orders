@@ -31,10 +31,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -67,25 +67,30 @@ export default class Orders {
             },
             {
               model: DBModels.UserModel,
-              required: true
+              required: true,
+              paranoid: false
             },
             {
               model: DBModels.UserPaymentModel,
               required: false,
+              paranoid: false,
               include: [
                 {
                   model: DBModels.UserCreditCardModel,
-                  required: false
+                  required: false,
+                  paranoid: false
                 }
               ]
             },
             {
               model: DBModels.AddressModel,
-              required: false
+              required: false,
+              paranoid: false
             },
             {
               model: DBModels.CouponModel,
-              required: false
+              required: false,
+              paranoid: false
             }
           ],
           order: [['createdAt', 'DESC']],
@@ -243,25 +248,30 @@ export default class Orders {
               },
               {
                 model: DBModels.UserModel,
-                required: true
+                required: true,
+                paranoid: false
               },
               {
                 model: DBModels.UserPaymentModel,
                 required: false,
+                paranoid: false,
                 include: [
                   {
                     model: DBModels.UserCreditCardModel,
-                    required: false
+                    required: false,
+                    paranoid: false
                   }
                 ]
               },
               {
                 model: DBModels.AddressModel,
-                required: false
+                required: false,
+                paranoid: false
               },
               {
                 model: DBModels.CouponModel,
-                required: false
+                required: false,
+                paranoid: false
               }
             ],
             limit: 2,
