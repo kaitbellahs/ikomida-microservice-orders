@@ -31,10 +31,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -141,6 +141,7 @@ export default class Orders {
             orderProduct?.discount ?? 0,
             orderProduct?.discountType ?? Types.Types.TDiscount.NO,
             orderProduct?.quantity ?? 0,
+            undefined,
             undefined,
             undefined,
             undefined,
@@ -325,6 +326,7 @@ export default class Orders {
             orderProduct?.discount ?? 0,
             orderProduct?.discountType ?? Types.Types.TDiscount.NO,
             orderProduct?.quantity ?? 0,
+            undefined,
             undefined,
             undefined,
             undefined,
