@@ -684,6 +684,7 @@ export default class Orders {
             )) *
           Number(product?.quantity)
       }
+      subtotal = Math.ceil(subtotal ?? 0)
       const discount = Logics.Finances.calcDiscount(subtotal, couponModel?.value ?? 0, couponModel?.valueType)
       if (!payload.payment || !payload.payment.id) {
         throw new Utils.iKomidaError(
@@ -706,7 +707,9 @@ export default class Orders {
         const calcDelivery = ((addressModel?.distance ?? 1) / 1000) * (vendorSettingsModel?.delivery ?? 0)
         delivery =
           calcDelivery < (vendorSettingsModel?.deliveryMin ?? 0) ? vendorSettingsModel?.deliveryMin : calcDelivery
+        delivery = Math.ceil(delivery ?? 0)
         if (delivery !== payload.delivery) {
+          this.logger.error(`delivery: ${delivery} !== ${payload.delivery} payload.delivery `)
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_DELIVERY_NOT_VALID)
         }
       }
