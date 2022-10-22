@@ -526,7 +526,7 @@ export default class Orders {
       }
 
       const ordersTotal = contractModel?.orders?.map(
-        order => Number(order?.subtotal) + Number(order?.delivery) - Number(order?.discount)
+        order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const billingLimit = contractModel?.plan?.billing ?? 0 ?? -1
@@ -872,6 +872,7 @@ export default class Orders {
               Utils.iKomidaError.IKOMIDA_PAYMENTS_SERVICE_PROCESS_PAYMENT_CREATE_CHARGE_ERROR
             )
           }
+          await userPaymentModel.$set('order', orderModel)
           if (userPaymentModel.status === Types.Types.TPagSeguroPaymentStatus.PAID) {
             orderModel.status = Types.Types.TOrderStatus.OPEN
           } else if (
@@ -1053,37 +1054,37 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       const orders = userModels?.[0]?.orders
-      const order = orders?.[0]
-      if ((orders?.length ?? 0) !== 1) {
+      if (!orders || orders.length !== 1) {
         const error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_ORDER_NOT_FOUND
         )
         return error.logAndReturn(this.logger)
       }
+      const orderModel = orders[0]
       if (
-        (order?.status &&
-          ![Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(order?.status) &&
+        (orderModel.status &&
+          ![Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(orderModel.status) &&
           Types.Types.TOrderStatus.CANCELED === payload.status) ||
-        (order?.status &&
+        (orderModel.status &&
           ![
             Types.Types.TOrderStatus.OPEN,
             Types.Types.TOrderStatus.ACCEPTED,
             Types.Types.TOrderStatus.WAITING_DELIVERY,
             Types.Types.TOrderStatus.IN_DELIVERY
-          ].includes(order?.status) &&
+          ].includes(orderModel.status) &&
           Types.Types.TOrderStatus.DELIVERED === payload.status)
       ) {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS)
         return error.logAndReturn(this.logger)
       }
       if (
-        order?.userPayment?.status &&
+        orderModel.userPayment?.status &&
         ![
           Types.Types.TPagSeguroPaymentStatus.PAID,
           Types.Types.TPagSeguroPaymentStatus.INANALYSE,
           Types.Types.TPagSeguroPaymentStatus.AUTHORIZED
-        ].includes(order?.userPayment?.status) &&
-        order?.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
+        ].includes(orderModel.userPayment?.status) &&
+        orderModel.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
       ) {
         const error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WAITING_PAYMENT
@@ -1091,16 +1092,16 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       if (
-        order?.status &&
+        orderModel.status &&
         Types.Types.TOrderStatus.CANCELED === payload.status &&
-        order?.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.CANCELED &&
-        [Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(order?.status) &&
-        order?.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
+        orderModel.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.CANCELED &&
+        [Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(orderModel.status) &&
+        orderModel.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
       ) {
         try {
           const paymentPayload = new Types.Classes.CAMQPPayload<string>()
           paymentPayload.method = 'cancelPayment'
-          paymentPayload.object = order?.userPayment?.id ?? '-'
+          paymentPayload.object = orderModel.userPayment?.id ?? '-'
           const amqp = new Domain.RabbitMQ(this.logger)
           await amqp?.publish(Domain.RabbitMQ.PAYMENT_QUEUE, paymentPayload)
           await amqp?.close()
@@ -1114,19 +1115,17 @@ export default class Orders {
           return error.logAndReturn(this.logger)
         }
       }
-      if (order) {
-        order.status = payload.status
-        order.finishedAt = new Date()
-        await order.save()
-      }
+      orderModel.status = payload.status
+      orderModel.finishedAt = new Date()
+      await orderModel.save()
       try {
         const pn = new PushNotification(this.logger)
         await pn.sendNotification(
           Utils.Notification.VENDOR_ORDER_UPDATED,
-          order?.id,
+          orderModel.id,
           contractModel?.id,
           undefined,
-          order?.customID,
+          orderModel.customID,
           payload.status.name
         )
       } catch (exception: any) {
@@ -1138,7 +1137,11 @@ export default class Orders {
       }
       return new Utils.Return(
         true,
-        Types.Classes.COrder.fromObject({ id: order?.id, status: order?.status, finishedAt: order?.finishedAt })
+        Types.Classes.COrder.fromObject({
+          id: orderModel.id,
+          status: orderModel.status,
+          finishedAt: orderModel.finishedAt
+        })
       )
     } catch (exception: any) {
       const error = new Utils.iKomidaError(
