@@ -1,10 +1,11 @@
 import { Domain, Utils, BackendTypes, Logics, Types, DBModels } from '@ikomida/shared-backend'
 import { v4 as uuidv4, validate as validateUUID } from 'uuid'
-import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
+import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/src/Utils/iKomidaError'
 import _ from 'lodash'
 import axios from 'axios'
 import { Includeable } from 'sequelize'
 import PushNotification from '../helpers/PushNotification.js'
+import pkg from '../../package.json' assert { type: 'json' }
 
 export default class Orders {
   logger
@@ -841,7 +842,8 @@ export default class Orders {
             {
               headers: {
                 identity: JSON.stringify(identity.toJSON()),
-                'X-Requested-With': 'iKomida-PS-V0.0.1'
+                'X-Requested-With': `iKomida-mo-V${pkg.version}`,
+                'user-agent': `iKomida/sl V${pkg.version}`
               }
             }
           )

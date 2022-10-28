@@ -4,7 +4,8 @@
     ],
     "exclude": [
         "node_modules/*",
-        "**/*.spec.ts"
+        "**/*.spec.ts",
+        "**/*.json"
     ],
     "compilerOptions": {
         "skipLibCheck": true,
@@ -23,6 +24,7 @@
         "resolveJsonModule": true,
         "moduleResolution": "node",
         "outDir": "build",
+        "rootDir": ".",
         "strict": true,
         "useDefineForClassFields": false,
         "target": "ES2021",
