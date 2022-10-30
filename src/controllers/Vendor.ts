@@ -1,5 +1,5 @@
 import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/shared-backend'
-import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/Utils/iKomidaError'
+import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/src/Utils/iKomidaError'
 import PushNotification from '../helpers/PushNotification.js'
 
 const orderOptions = [
