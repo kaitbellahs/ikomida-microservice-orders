@@ -31,10 +31,10 @@ export default class Orders {
     const where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : {}
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -68,7 +68,17 @@ export default class Orders {
             {
               model: DBModels.UserModel,
               required: true,
-              paranoid: false
+              paranoid: false,
+              //TODO: get totals from db
+              include: [
+                {
+                  model: DBModels.OrderModel,
+                  required: false,
+                  where: {
+                    status: Types.Types.TOrderStatus.DELIVERED
+                  }
+                }
+              ]
             },
             {
               model: DBModels.UserPaymentModel,
@@ -111,6 +121,10 @@ export default class Orders {
       } catch (error: any) {
         this.logger.error(error)
       }
+      const ordersTotal = orderModel.user?.orders?.map(
+        order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
+      )
+      const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const user = Types.Classes.CUser.init(
         '',
         orderModel.user?.name ?? '-',
@@ -119,7 +133,26 @@ export default class Orders {
         orderModel.user?.email ?? '-',
         orderModel.user?.phone ?? '-',
         String(orderModel.user?.areaCode),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        orderModel.user?.orders?.length ?? 0,
+        billing
       )
       const products =
         orderModel.orderProducts?.map(orderProduct => {
@@ -152,6 +185,8 @@ export default class Orders {
             orderProductOptions,
             undefined,
             orderProduct.observation,
+            undefined,
+            undefined,
             orderProduct?.productId
           )
         }) ?? []
@@ -184,6 +219,7 @@ export default class Orders {
       const coupon = Types.Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
+        orderModel.coupon?.minValue ?? 0,
         orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
       )
 
@@ -202,6 +238,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         user,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
@@ -250,7 +293,17 @@ export default class Orders {
               {
                 model: DBModels.UserModel,
                 required: true,
-                paranoid: false
+                paranoid: false,
+                //TODO: get totals from db
+                include: [
+                  {
+                    model: DBModels.OrderModel,
+                    required: false,
+                    where: {
+                      status: Types.Types.TOrderStatus.DELIVERED
+                    }
+                  }
+                ]
               },
               {
                 model: DBModels.UserPaymentModel,
@@ -296,6 +349,11 @@ export default class Orders {
       } catch (error: any) {
         this.logger.error(error)
       }
+
+      const ordersTotal = orderModel.user?.orders?.map(
+        order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
+      )
+      const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const user = Types.Classes.CUser.init(
         '',
         orderModel.user?.name ?? '-',
@@ -304,7 +362,26 @@ export default class Orders {
         orderModel.user?.email ?? '-',
         orderModel.user?.phone ?? '-',
         String(orderModel.user?.areaCode),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        orderModel.user?.orders?.length ?? 0,
+        billing
       )
       const products =
         orderModel.orderProducts?.map(orderProduct => {
@@ -337,6 +414,8 @@ export default class Orders {
             orderProductOptions,
             undefined,
             orderProduct.observation,
+            undefined,
+            undefined,
             orderProduct?.productId
           )
         }) ?? []
@@ -369,6 +448,7 @@ export default class Orders {
       const coupon = Types.Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
+        orderModel.coupon?.minValue ?? 0,
         orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
       )
 
@@ -387,6 +467,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         user,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
