@@ -50,22 +50,30 @@ export default class Orders {
   }
   IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID_VALUE: IiKomidaErrorModel = {
     code: 'IMO008',
-    message: 'Para aplicar o cupom de desconto o valor do pedido deve ser maior que {0}.'
+    message: 'Para aplicar o cupom de desconto o valor do pedido deve ser maior que R$ {0}.'
   }
   IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_TABLE: IiKomidaErrorModel = {
     code: 'IMO008',
     message: 'Para continuar seu pedido precisa definir uma mesa..'
   }
 
-  async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
-    const where =
+  async getOrders(identity: Types.Classes.CUser, timestamp = 0, query?: Types.Interfaces.IMetadata) {
+    let where = {}
+    const orderType = Types.Types.TOrderType.valueOf(query?.orderType ?? '')
+    if (orderType) {
+      where = {
+        orderType
+      }
+    }
+    where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
+          ...where,
           createdAt: {
             [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
         }
-        : {}
+        : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
         ikomidaID: identity.ikomidaID
@@ -570,7 +578,16 @@ export default class Orders {
       }
 
       const ordersTotal = contractModel?.orders?.map(
-        order => Number(order.subtotal) + (Number(order.orderType === Types.Types.TOrderType.DELIVERY ? order.delivery : order.orderType === Types.Types.TOrderType.LOCAL ? Logics.Finances.calcDiscount(order.subtotal ?? 0, order.tip ?? 0, Types.Types.TDiscount.PERCENT) : 0)) - Number(order.discount)
+        order =>
+          Number(order.subtotal) +
+          Number(
+            order.orderType === Types.Types.TOrderType.DELIVERY
+              ? order.delivery
+              : order.orderType === Types.Types.TOrderType.LOCAL
+                ? Logics.Finances.calcDiscount(order.subtotal ?? 0, order.tip ?? 0, Types.Types.TDiscount.PERCENT)
+                : 0
+          ) -
+          Number(order.discount)
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const billingLimit = contractModel?.plan?.billing ?? 0 ?? -1
@@ -624,7 +641,7 @@ export default class Orders {
       let couponModel = null
       if (payload.coupon) {
         const couponsResult = contractModel.coupons
-        if (couponsResult?.length === 1) {
+        if (couponsResult && couponsResult.length === 1 && couponsResult[0].orderTypes?.includes(payload.orderType)) {
           couponModel = couponsResult?.[0]
         } else {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID)
@@ -758,10 +775,10 @@ export default class Orders {
       }
       subtotal = Math.ceil(subtotal ?? 0)
 
-      if ((couponModel?.minValue ?? 0) > subtotal) {
+      if (couponModel?.minValue && couponModel?.minValue > subtotal) {
         throw new Utils.iKomidaError(
           this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID_VALUE,
-          couponModel?.minValue ?? 0
+          couponModel?.minValue / 100
         )
       }
       const discount = Logics.Finances.calcDiscount(subtotal, couponModel?.value ?? 0, couponModel?.valueType)
@@ -913,7 +930,15 @@ export default class Orders {
         if (userCreditCardModel?.id && orderModel.id) {
           const processPaymentRequest = Types.Classes.CProcessPayment.init(
             userCreditCardModel?.id,
-            Number(subtotal) + Number(payload.orderType === Types.Types.TOrderType.DELIVERY ? delivery : payload.orderType === Types.Types.TOrderType.LOCAL ? Logics.Finances.calcDiscount(subtotal ?? 0, tip ?? 0, Types.Types.TDiscount.PERCENT) : 0) - Number(discount),
+            Number(subtotal) +
+            Number(
+              payload.orderType === Types.Types.TOrderType.DELIVERY
+                ? delivery
+                : payload.orderType === Types.Types.TOrderType.LOCAL
+                  ? Logics.Finances.calcDiscount(subtotal ?? 0, tip ?? 0, Types.Types.TDiscount.PERCENT)
+                  : 0
+            ) -
+            Number(discount),
             orderModel.id
           )
           if ((String(processPaymentRequest?.amount)?.length ?? 0) > 9) {
