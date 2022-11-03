@@ -15,15 +15,6 @@ export default class Orders {
     this.logger = logger
   }
 
-  GET_ORDER_INVALIDE_UUID: IiKomidaErrorModel = {
-    code: 'IMO003',
-    message: 'O pedido não foi localizado.'
-  }
-  GET_ORDER_MORE_THEN_ONE: IiKomidaErrorModel = {
-    code: 'IMO004',
-    message: 'O pedido não foi localizado.'
-  }
-
   private IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST: IiKomidaErrorModel = {
     code: 'POS001',
     message: 'As opções do produto que você selecionou não foram localizadas!'
@@ -33,16 +24,56 @@ export default class Orders {
     code: 'POS002',
     message: 'O objeto do pedido encontra-se vazio!'
   }
+  GET_ORDER_INVALIDE_UUID: IiKomidaErrorModel = {
+    code: 'IMO003',
+    message: 'O pedido não foi localizado.'
+  }
+  GET_ORDER_MORE_THEN_ONE: IiKomidaErrorModel = {
+    code: 'IMO004',
+    message: 'O pedido não foi localizado.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_ORDER_TYPE: IiKomidaErrorModel = {
+    code: 'IMO005',
+    message: 'O tipo de pedido e inválido.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_TIP: IiKomidaErrorModel = {
+    code: 'IMO006',
+    message: 'Encontramos algumas informações inválidas no pedido.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ORDER_TYPE: IiKomidaErrorModel = {
+    code: 'IMO007',
+    message: 'Encontramos algumas informações inválidas no pedido.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_LENGTH: IiKomidaErrorModel = {
+    code: 'IMO008',
+    message: 'Precisa escolher pelo menos um produto para realizar um pedido.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID_VALUE: IiKomidaErrorModel = {
+    code: 'IMO008',
+    message: 'Para aplicar o cupom de desconto o valor do pedido deve ser maior que R$ {0}.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_TABLE: IiKomidaErrorModel = {
+    code: 'IMO008',
+    message: 'Para continuar seu pedido precisa definir uma mesa..'
+  }
 
-  async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
-    const where =
+  async getOrders(identity: Types.Classes.CUser, timestamp = 0, query?: Types.Interfaces.IMetadata) {
+    let where = {}
+    const orderType = Types.Types.TOrderType.valueOf(query?.orderType ?? '')
+    if (orderType) {
+      where = {
+        orderType
+      }
+    }
+    where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
+            ...where,
             createdAt: {
               [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
             }
           }
-        : {}
+        : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
         ikomidaID: identity.ikomidaID
@@ -175,6 +206,7 @@ export default class Orders {
 
       const coupon = Types.Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
+        orderModel.coupon?.minValue ?? 0,
         orderModel.coupon?.value ?? 0,
         orderModel.coupon?.valueType ?? Types.Types.TDiscount.NO
       )
@@ -194,6 +226,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         undefined,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderModel.id,
         orderModel.createdAt.getTime()
       )
@@ -348,6 +387,7 @@ export default class Orders {
       const coupon = Types.Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
+        orderModel.coupon?.minValue ?? 0,
         orderModel.coupon?.valueType ?? Types.Types.TDiscount.NO
       )
 
@@ -366,6 +406,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         undefined,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderModel.id,
         orderModel.createdAt.getTime()
       )
@@ -391,6 +438,9 @@ export default class Orders {
         throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_OBJECT)
       }
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
+      if (!payload.orderType || !Types.Types.TOrderType.values().includes(payload.orderType)) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_OBJECT)
+      }
       const productsIDs = [...new Set(payload.products?.map(item => item.id))]
       const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
       for (const product of payload.products ?? []) {
@@ -517,6 +567,7 @@ export default class Orders {
           ...includeCoupon
         ]
       })
+
       if (!contractModel) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_CONTRACT)
       }
@@ -527,7 +578,16 @@ export default class Orders {
       }
 
       const ordersTotal = contractModel?.orders?.map(
-        order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
+        order =>
+          Number(order.subtotal) +
+          Number(
+            order.orderType === Types.Types.TOrderType.DELIVERY
+              ? order.delivery
+              : order.orderType === Types.Types.TOrderType.LOCAL
+              ? Logics.Finances.calcDiscount(order.subtotal ?? 0, order.tip ?? 0, Types.Types.TDiscount.PERCENT)
+              : 0
+          ) -
+          Number(order.discount)
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const billingLimit = contractModel?.plan?.billing ?? 0 ?? -1
@@ -540,6 +600,15 @@ export default class Orders {
       const vendorSettingsModel = contractModel?.vendorSettings
       if (!vendorSettingsModel) {
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY)
+      }
+      if (payload.orderType === Types.Types.TOrderType.LOCAL && _.isEmpty(payload.table)) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_TABLE)
+      }
+      if (!vendorSettingsModel.orderTypes?.includes(payload.orderType)) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_ORDER_TYPE)
+      }
+      if (payload.orderType === Types.Types.TOrderType.LOCAL && vendorSettingsModel.tip !== payload.tip) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_TIP)
       }
       const object: Types.Classes.CBusinessTime = Types.Classes.CBusinessTime.fromObject({
         hours: vendorSettingsModel?.businessHours,
@@ -561,21 +630,26 @@ export default class Orders {
         )
         throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_NOT_EXIST)
       }
-
-      const addressModels = userModel?.addresses
-      if (!addressModels || addressModels.length !== 1) {
-        throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ADDRESS_NOT_VALID)
+      let addressModel: DBModels.AddressModel | undefined = undefined
+      if (payload.orderType === Types.Types.TOrderType.DELIVERY) {
+        const addressModels = userModel?.addresses
+        if (!addressModels || addressModels.length !== 1) {
+          throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ADDRESS_NOT_VALID)
+        }
+        addressModel = addressModels[0]
       }
-      const addressModel = addressModels[0]
-
       let couponModel = null
       if (payload.coupon) {
         const couponsResult = contractModel.coupons
-        if (couponsResult?.length === 1) {
+        if (couponsResult && couponsResult.length === 1 && couponsResult[0].orderTypes?.includes(payload.orderType)) {
           couponModel = couponsResult?.[0]
         } else {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID)
         }
+      }
+
+      if (payload.products.length <= 0) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_LENGTH)
       }
       for (const product of payload.products ?? []) {
         const filteredProduct = productModels.filter(element => element.id === product.id)
@@ -620,6 +694,20 @@ export default class Orders {
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_NAME,
             filteredProduct[0].title
           )
+        }
+        if (!filteredProduct[0].orderTypes?.includes(payload.orderType)) {
+          throw new Utils.iKomidaError(
+            this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ORDER_TYPE,
+            filteredProduct[0].title
+          )
+        }
+        for (const productOrderType of product.orderTypes ?? []) {
+          if (!filteredProduct[0].orderTypes?.includes(productOrderType)) {
+            throw new Utils.iKomidaError(
+              this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_ORDER_TYPE,
+              filteredProduct[0].title
+            )
+          }
         }
       }
 
@@ -689,6 +777,13 @@ export default class Orders {
           Number(product?.quantity)
       }
       subtotal = Math.ceil(subtotal ?? 0)
+
+      if (couponModel?.minValue && couponModel?.minValue > subtotal) {
+        throw new Utils.iKomidaError(
+          this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_COUPON_NOT_VALID_VALUE,
+          couponModel?.minValue / 100
+        )
+      }
       const discount = Logics.Finances.calcDiscount(subtotal, couponModel?.value ?? 0, couponModel?.valueType)
       if (!payload.payment || !payload.payment.id) {
         throw new Utils.iKomidaError(
@@ -707,16 +802,21 @@ export default class Orders {
       }
 
       let delivery: number | undefined = 0
-      if (!vendorSettingsModel?.deliveryFree) {
-        const calcDelivery = ((addressModel?.distance ?? 1) / 1000) * (vendorSettingsModel?.delivery ?? 0)
-        delivery =
-          calcDelivery < (vendorSettingsModel?.deliveryMin ?? 0) ? vendorSettingsModel?.deliveryMin : calcDelivery
-        delivery = Math.ceil(delivery ?? 0)
-        if (delivery !== payload.delivery) {
-          this.logger.error(`delivery: ${delivery} !== ${payload.delivery} payload.delivery `)
-          throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_DELIVERY_NOT_VALID)
+      if (payload.orderType === Types.Types.TOrderType.DELIVERY) {
+        if (!vendorSettingsModel?.deliveryFree) {
+          const calcDelivery = ((addressModel?.distance ?? 1) / 1000) * (vendorSettingsModel?.delivery ?? 0)
+          delivery =
+            calcDelivery < (vendorSettingsModel?.deliveryMin ?? 0) ? vendorSettingsModel?.deliveryMin : calcDelivery
+          delivery = Math.ceil(delivery ?? 0)
+          if (delivery !== payload.delivery) {
+            this.logger.error(`delivery: ${delivery} !== ${payload.delivery} payload.delivery `)
+            throw new Utils.iKomidaError(
+              Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_DELIVERY_NOT_VALID
+            )
+          }
         }
       }
+      const tip = Logics.Finances.calcDiscount(subtotal, payload.tip ?? 0, Types.Types.TDiscount.PERCENT)
 
       const orderId = uuidv4()
       transaction = await Domain.SqlDB.sequelize.transaction({
@@ -782,11 +882,14 @@ export default class Orders {
         preparationMax: vendorSettingsModel?.preparationMax,
         customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
         paymentMethodType: userModel?.paymentMethodType,
-        addressId: addressModel.id,
+        addressId: payload.orderType === Types.Types.TOrderType.DELIVERY ? addressModel?.id : undefined,
         couponId: couponModel?.id,
+        orderType: payload.orderType,
+        tip: payload.orderType === Types.Types.TOrderType.LOCAL ? payload.tip : undefined,
+        table: payload.orderType === Types.Types.TOrderType.LOCAL ? payload.table : undefined,
         contractId: contractModel.id,
         userCreditCardId: userCreditCardModel?.id,
-        delivery,
+        delivery: payload.orderType === Types.Types.TOrderType.DELIVERY ? delivery : undefined,
         orderProducts
       }
       const orderModel: DBModels.OrderModel = await userModel.$create('order', orderPayload, {
@@ -830,7 +933,15 @@ export default class Orders {
         if (userCreditCardModel?.id && orderModel.id) {
           const processPaymentRequest = Types.Classes.CProcessPayment.init(
             userCreditCardModel?.id,
-            Number(subtotal) + Number(delivery) - Number(discount),
+            Number(subtotal) +
+              Number(
+                payload.orderType === Types.Types.TOrderType.DELIVERY
+                  ? delivery
+                  : payload.orderType === Types.Types.TOrderType.LOCAL
+                  ? Logics.Finances.calcDiscount(subtotal ?? 0, tip ?? 0, Types.Types.TDiscount.PERCENT)
+                  : 0
+              ) -
+              Number(discount),
             orderModel.id
           )
           if ((String(processPaymentRequest?.amount)?.length ?? 0) > 9) {
@@ -934,17 +1045,17 @@ export default class Orders {
           )
         }) ?? []
       const address = Types.Classes.CAddress.init(
-        addressModel.postalCode ?? '-',
-        addressModel.street ?? '-',
-        addressModel.neighborhood ?? '-',
-        addressModel.city ?? '-',
-        addressModel.stat ?? '-',
-        addressModel.number,
-        addressModel.complement,
-        addressModel.kind,
-        addressModel.reference,
-        addressModel.distance,
-        addressModel.duration
+        addressModel?.postalCode ?? '-',
+        addressModel?.street ?? '-',
+        addressModel?.neighborhood ?? '-',
+        addressModel?.city ?? '-',
+        addressModel?.stat ?? '-',
+        addressModel?.number,
+        addressModel?.complement,
+        addressModel?.kind,
+        addressModel?.reference,
+        addressModel?.distance,
+        addressModel?.duration
       )
       const payment = Types.Classes.CPaymentMethod.init(
         userCreditCardModel?.type ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
@@ -960,6 +1071,7 @@ export default class Orders {
       const coupon = Types.Classes.CCoupon.init(
         couponModel?.name ?? '-',
         couponModel?.value ?? 0,
+        couponModel?.minValue ?? 0,
         couponModel?.valueType ?? Types.Types.TDiscount.NO
       )
 
@@ -978,6 +1090,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         undefined,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderId,
         orderModel.createdAt.getTime()
       )
