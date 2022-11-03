@@ -2,13 +2,28 @@ import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/s
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/src/Utils/iKomidaError'
 import PushNotification from '../helpers/PushNotification.js'
 
-const orderOptions = [
-  Types.Types.TOrderStatus.ACCEPTED,
-  Types.Types.TOrderStatus.WAITING_DELIVERY,
-  Types.Types.TOrderStatus.IN_DELIVERY,
-  Types.Types.TOrderStatus.DELIVERED,
-  Types.Types.TOrderStatus.CANCELED
-]
+const orderOptions: Types.Interfaces.IRecord<string, Types.Types.TOrderType[]> = {
+  [Types.Types.TOrderType.DELIVERY.id]: [
+    Types.Types.TOrderStatus.ACCEPTED,
+    Types.Types.TOrderStatus.WAITING_DELIVERY,
+    Types.Types.TOrderStatus.IN_DELIVERY,
+    Types.Types.TOrderStatus.DELIVERED,
+    Types.Types.TOrderStatus.CANCELED
+  ],
+  [Types.Types.TOrderType.LOCAL.id]: [
+    Types.Types.TOrderStatus.ACCEPTED,
+    Types.Types.TOrderStatus.WAITING_LOCAL,
+    Types.Types.TOrderStatus.IN_TABLE_DELIVERY,
+    Types.Types.TOrderStatus.DELIVERED,
+    Types.Types.TOrderStatus.CANCELED
+  ],
+  [Types.Types.TOrderType.PICKUP.id]: [
+    Types.Types.TOrderStatus.ACCEPTED,
+    Types.Types.TOrderStatus.WAITING_PICKUP,
+    Types.Types.TOrderStatus.DELIVERED,
+    Types.Types.TOrderStatus.CANCELED
+  ]
+}
 const orderFinishedOptions = [Types.Types.TOrderStatus.DELIVERED, Types.Types.TOrderStatus.CANCELED]
 export default class Orders {
   logger
@@ -27,15 +42,23 @@ export default class Orders {
     message: 'O pedido não foi localizado.'
   }
 
-  async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
-    const where =
+  async getOrders(identity: Types.Classes.CUser, timestamp = 0, query?: Types.Interfaces.IMetadata) {
+    let where = {}
+    const orderType = Types.Types.TOrderType.valueOf(query?.orderType ?? '')
+    if (orderType) {
+      where = {
+        orderType
+      }
+    }
+    where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            ...where,
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
-        : {}
+        : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
         ikomidaID: identity.ikomidaID
@@ -73,6 +96,7 @@ export default class Orders {
               include: [
                 {
                   model: DBModels.OrderModel,
+                  attributes: ['id', 'orderType', 'subtotal', 'delivery', 'discount', 'tip'],
                   required: false,
                   where: {
                     status: Types.Types.TOrderStatus.DELIVERED
@@ -549,12 +573,6 @@ export default class Orders {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_USER)
         return error.logAndReturn(this.logger)
       }
-      if (!payload.id || (payload.status && !orderOptions.includes(payload.status))) {
-        const error = new Utils.iKomidaError(
-          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_MISSING_OBJECT
-        )
-        return error.logAndReturn(this.logger)
-      }
       const orders = contractModel.orders
       let order = null
       if (!orders || orders.length !== 1) {
@@ -564,6 +582,16 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       order = orders[0]
+      if (
+        !payload.id ||
+        !order.orderType?.id ||
+        (payload.status && !orderOptions[order.orderType.id]?.includes(payload.status))
+      ) {
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_MISSING_OBJECT
+        )
+        return error.logAndReturn(this.logger)
+      }
       if (
         order.userPayment &&
         order.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.PAID &&
