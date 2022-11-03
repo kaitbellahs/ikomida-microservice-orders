@@ -27,12 +27,20 @@ app.get('/orders/:timestamp', async (req, res) => {
   let payload
   switch (BackendTypes.Roles.valueOf(identity?.role)) {
     case BackendTypes.Roles.CLIENT:
-      payload = await user.getOrders(identity, Number(req.params?.timestamp) ?? 0)
+      payload = await user.getOrders(
+        identity,
+        Number(req.params?.timestamp) ?? 0,
+        req.query as Types.Interfaces.IMetadata
+      )
       break
     case BackendTypes.Roles.ADMIN:
     case BackendTypes.Roles.VENDOR:
     case BackendTypes.Roles.STAFF:
-      payload = await vendor.getOrders(identity, Number(req.params?.timestamp) ?? 0)
+      payload = await vendor.getOrders(
+        identity,
+        Number(req.params?.timestamp) ?? 0,
+        req.query as Types.Interfaces.IMetadata
+      )
       break
   }
   res.status(payload?.success ? 200 : 404).sendResponse(payload)
