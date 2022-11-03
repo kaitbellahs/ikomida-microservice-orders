@@ -2,13 +2,28 @@ import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/s
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/src/Utils/iKomidaError'
 import PushNotification from '../helpers/PushNotification.js'
 
-const orderOptions = [
-  Types.Types.TOrderStatus.ACCEPTED,
-  Types.Types.TOrderStatus.WAITING_DELIVERY,
-  Types.Types.TOrderStatus.IN_DELIVERY,
-  Types.Types.TOrderStatus.DELIVERED,
-  Types.Types.TOrderStatus.CANCELED
-]
+const orderOptions: Types.Interfaces.IRecord<string, Types.Types.TOrderType[]> = {
+  [Types.Types.TOrderType.DELIVERY.id]: [
+    Types.Types.TOrderStatus.ACCEPTED,
+    Types.Types.TOrderStatus.WAITING_DELIVERY,
+    Types.Types.TOrderStatus.IN_DELIVERY,
+    Types.Types.TOrderStatus.DELIVERED,
+    Types.Types.TOrderStatus.CANCELED
+  ],
+  [Types.Types.TOrderType.LOCAL.id]: [
+    Types.Types.TOrderStatus.ACCEPTED,
+    Types.Types.TOrderStatus.WAITING_LOCAL,
+    Types.Types.TOrderStatus.IN_TABLE_DELIVERY,
+    Types.Types.TOrderStatus.DELIVERED,
+    Types.Types.TOrderStatus.CANCELED
+  ],
+  [Types.Types.TOrderType.PICKUP.id]: [
+    Types.Types.TOrderStatus.ACCEPTED,
+    Types.Types.TOrderStatus.WAITING_PICKUP,
+    Types.Types.TOrderStatus.DELIVERED,
+    Types.Types.TOrderStatus.CANCELED
+  ]
+}
 const orderFinishedOptions = [Types.Types.TOrderStatus.DELIVERED, Types.Types.TOrderStatus.CANCELED]
 export default class Orders {
   logger
@@ -27,15 +42,23 @@ export default class Orders {
     message: 'O pedido não foi localizado.'
   }
 
-  async getOrders(identity: Types.Classes.CUser, timestamp = 0) {
-    const where =
+  async getOrders(identity: Types.Classes.CUser, timestamp = 0, query?: Types.Interfaces.IMetadata) {
+    let where = {}
+    const orderType = Types.Types.TOrderType.valueOf(query?.orderType ?? '')
+    if (orderType) {
+      where = {
+        orderType
+      }
+    }
+    where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
+            ...where,
             createdAt: {
               [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
             }
           }
-        : {}
+        : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
         ikomidaID: identity.ikomidaID
@@ -68,7 +91,18 @@ export default class Orders {
             {
               model: DBModels.UserModel,
               required: true,
-              paranoid: false
+              paranoid: false,
+              //TODO: get totals from db
+              include: [
+                {
+                  model: DBModels.OrderModel,
+                  attributes: ['id', 'orderType', 'subtotal', 'delivery', 'discount', 'tip'],
+                  required: false,
+                  where: {
+                    status: Types.Types.TOrderStatus.DELIVERED
+                  }
+                }
+              ]
             },
             {
               model: DBModels.UserPaymentModel,
@@ -111,6 +145,10 @@ export default class Orders {
       } catch (error: any) {
         this.logger.error(error)
       }
+      const ordersTotal = orderModel.user?.orders?.map(
+        order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
+      )
+      const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const user = Types.Classes.CUser.init(
         '',
         orderModel.user?.name ?? '-',
@@ -119,7 +157,26 @@ export default class Orders {
         orderModel.user?.email ?? '-',
         orderModel.user?.phone ?? '-',
         String(orderModel.user?.areaCode),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        orderModel.user?.orders?.length ?? 0,
+        billing
       )
       const products =
         orderModel.orderProducts?.map(orderProduct => {
@@ -152,6 +209,8 @@ export default class Orders {
             orderProductOptions,
             undefined,
             orderProduct.observation,
+            undefined,
+            undefined,
             orderProduct?.productId
           )
         }) ?? []
@@ -184,6 +243,7 @@ export default class Orders {
       const coupon = Types.Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
+        orderModel.coupon?.minValue ?? 0,
         orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
       )
 
@@ -202,6 +262,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         user,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
@@ -250,7 +317,17 @@ export default class Orders {
               {
                 model: DBModels.UserModel,
                 required: true,
-                paranoid: false
+                paranoid: false,
+                //TODO: get totals from db
+                include: [
+                  {
+                    model: DBModels.OrderModel,
+                    required: false,
+                    where: {
+                      status: Types.Types.TOrderStatus.DELIVERED
+                    }
+                  }
+                ]
               },
               {
                 model: DBModels.UserPaymentModel,
@@ -296,6 +373,11 @@ export default class Orders {
       } catch (error: any) {
         this.logger.error(error)
       }
+
+      const ordersTotal = orderModel.user?.orders?.map(
+        order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
+      )
+      const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const user = Types.Classes.CUser.init(
         '',
         orderModel.user?.name ?? '-',
@@ -304,7 +386,26 @@ export default class Orders {
         orderModel.user?.email ?? '-',
         orderModel.user?.phone ?? '-',
         String(orderModel.user?.areaCode),
-        ''
+        '',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        orderModel.user?.orders?.length ?? 0,
+        billing
       )
       const products =
         orderModel.orderProducts?.map(orderProduct => {
@@ -337,6 +438,8 @@ export default class Orders {
             orderProductOptions,
             undefined,
             orderProduct.observation,
+            undefined,
+            undefined,
             orderProduct?.productId
           )
         }) ?? []
@@ -369,6 +472,7 @@ export default class Orders {
       const coupon = Types.Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
+        orderModel.coupon?.minValue ?? 0,
         orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
       )
 
@@ -387,6 +491,13 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         user,
+        Types.Classes.CLocation.fromObject({
+          latitude: orderModel.locationLatitude,
+          longitude: orderModel.locationLongitude
+        }),
+        orderModel.orderType,
+        orderModel.tip,
+        orderModel.table,
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
@@ -462,12 +573,6 @@ export default class Orders {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALID_USER)
         return error.logAndReturn(this.logger)
       }
-      if (!payload.id || (payload.status && !orderOptions.includes(payload.status))) {
-        const error = new Utils.iKomidaError(
-          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_MISSING_OBJECT
-        )
-        return error.logAndReturn(this.logger)
-      }
       const orders = contractModel.orders
       let order = null
       if (!orders || orders.length !== 1) {
@@ -477,6 +582,16 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       order = orders[0]
+      if (
+        !payload.id ||
+        !order.orderType?.id ||
+        (payload.status && !orderOptions[order.orderType.id]?.includes(payload.status))
+      ) {
+        const error = new Utils.iKomidaError(
+          Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_MISSING_OBJECT
+        )
+        return error.logAndReturn(this.logger)
+      }
       if (
         order.userPayment &&
         order.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.PAID &&
