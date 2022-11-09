@@ -53,11 +53,11 @@ export default class Orders {
     where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-            ...where,
-            createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
-            }
+          ...where,
+          createdAt: {
+            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
           }
+        }
         : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -211,6 +211,8 @@ export default class Orders {
             orderProduct.observation,
             undefined,
             undefined,
+            undefined,
+            undefined,
             orderProduct?.productId
           )
         }) ?? []
@@ -263,12 +265,13 @@ export default class Orders {
         payment,
         user,
         Types.Classes.CLocation.fromObject({
-          latitude: orderModel.locationLatitude,
-          longitude: orderModel.locationLongitude
+          latitude: orderModel?.coordinates?.coordinates?.[0],
+          longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
         orderModel.orderType,
         orderModel.tip,
         orderModel.table,
+        orderModel.change,
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
@@ -440,6 +443,8 @@ export default class Orders {
             orderProduct.observation,
             undefined,
             undefined,
+            undefined,
+            undefined,
             orderProduct?.productId
           )
         }) ?? []
@@ -492,12 +497,13 @@ export default class Orders {
         payment,
         user,
         Types.Classes.CLocation.fromObject({
-          latitude: orderModel.locationLatitude,
-          longitude: orderModel.locationLongitude
+          latitude: orderModel?.coordinates?.coordinates?.[0],
+          longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
         orderModel.orderType,
         orderModel.tip,
         orderModel.table,
+        orderModel.change,
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
