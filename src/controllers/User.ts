@@ -54,7 +54,16 @@ export default class Orders {
   }
   IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_TABLE: IiKomidaErrorModel = {
     code: 'IMO008',
-    message: 'Para continuar seu pedido precisa definir uma mesa..'
+    message: 'Para continuar seu pedido precisa definir uma mesa.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_CHANGE: IiKomidaErrorModel = {
+    code: 'IMO009',
+    message:
+      'Para continuar seu pedido precisa definir uma o valor total das notas ou cédulas que vai usar para o pagamento.'
+  }
+  IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_ADDRESS: IiKomidaErrorModel = {
+    code: 'IMO010',
+    message: 'O endereço da entrega não é válido.'
   }
 
   async getOrders(identity: Types.Classes.CUser, timestamp = 0, query?: Types.Interfaces.IMetadata) {
@@ -227,12 +236,13 @@ export default class Orders {
         payment,
         undefined,
         Types.Classes.CLocation.fromObject({
-          latitude: orderModel.locationLatitude,
-          longitude: orderModel.locationLongitude
+          latitude: orderModel?.coordinates?.coordinates?.[0],
+          longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
         orderModel.orderType,
         orderModel.tip,
         orderModel.table,
+        orderModel.change,
         orderModel.id,
         orderModel.createdAt.getTime()
       )
@@ -407,12 +417,13 @@ export default class Orders {
         payment,
         undefined,
         Types.Classes.CLocation.fromObject({
-          latitude: orderModel.locationLatitude,
-          longitude: orderModel.locationLongitude
+          latitude: orderModel?.coordinates?.coordinates?.[0],
+          longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
         orderModel.orderType,
         orderModel.tip,
         orderModel.table,
+        orderModel.change,
         orderModel.id,
         orderModel.createdAt.getTime()
       )
@@ -440,6 +451,9 @@ export default class Orders {
       const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
       if (!payload.orderType || !Types.Types.TOrderType.values().includes(payload.orderType)) {
         throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_OBJECT)
+      }
+      if (!payload.address && Types.Types.TOrderType.DELIVERY === payload.orderType) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_EMPTY_ADDRESS)
       }
       const productsIDs = [...new Set(payload.products?.map(item => item.id))]
       const productOptionsIDs: { productId: string | undefined; optionsIds: Set<string> }[] = []
@@ -473,15 +487,16 @@ export default class Orders {
           }
         ]
         : []
-      const userIncludes: Includeable[] = [
-        {
+      const userIncludes: Includeable[] = []
+      if (Types.Types.TOrderType.DELIVERY === payload.orderType) {
+        userIncludes.push({
           model: DBModels.AddressModel,
           where: {
             id: payload.address?.id
           },
           required: false
-        }
-      ]
+        })
+      }
       if (validateUUID(payload.payment?.id ?? '')) {
         userIncludes.push({
           model: DBModels.UserCreditCardModel,
@@ -609,6 +624,12 @@ export default class Orders {
       }
       if (payload.orderType === Types.Types.TOrderType.LOCAL && vendorSettingsModel.tip !== payload.tip) {
         throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_TIP)
+      }
+      if (
+        (payload.payment?.type === Types.Types.TPaymentMethod.CASH_ON_DELIVERY && isNaN(Number(payload.change))) ||
+        Number(payload.change) <= 0
+      ) {
+        throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_INVALIDE_CHANGE)
       }
       const object: Types.Classes.CBusinessTime = Types.Classes.CBusinessTime.fromObject({
         hours: vendorSettingsModel?.businessHours,
@@ -743,14 +764,10 @@ export default class Orders {
             throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_2)
           }
           const productOptionModel = filteredProductOptionModel[0]
-          if (
-            (productOptionModel?.price ?? 0) !== option.price ||
-            option.units > (productOptionModel?.units ?? 0)
-          ) {
+          if ((productOptionModel?.price ?? 0) !== option.price || option.units > (productOptionModel?.units ?? 0)) {
             this.logger.warn(
               `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
-              }, "option.units > productOptionModel?.units:", ${option.units} > ${(productOptionModel?.units ?? 0)
-              }`
+              }, "option.units > productOptionModel?.units:", ${option.units} > ${productOptionModel?.units ?? 0}`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
           }
@@ -874,8 +891,11 @@ export default class Orders {
         status: Types.Types.TOrderStatus.WAITING_PAYMENT,
         subtotal,
         discount,
-        locationLatitude: payload.location?.latitude,
-        locationLongitude: payload.location?.longitude,
+        change: payload.change,
+        coordinates: BackendTypes.CGeometry.init(BackendTypes.TGeometry.POINT, [
+          payload.location?.latitude ?? 0,
+          payload.location?.longitude ?? 0
+        ]).toJSON(),
         preparationMin: vendorSettingsModel?.preparationMin,
         preparationMax: vendorSettingsModel?.preparationMax,
         customID: (contractModel?.lastOrderCustomID ?? 0) + 1,
@@ -1089,12 +1109,13 @@ export default class Orders {
         payment,
         undefined,
         Types.Classes.CLocation.fromObject({
-          latitude: orderModel.locationLatitude,
-          longitude: orderModel.locationLongitude
+          latitude: orderModel?.coordinates?.coordinates?.[0],
+          longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
         orderModel.orderType,
         orderModel.tip,
         orderModel.table,
+        orderModel.change,
         orderId,
         orderModel.createdAt.getTime()
       )
