@@ -77,11 +77,11 @@ export default class Orders {
     where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          ...where,
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            ...where,
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -94,7 +94,7 @@ export default class Orders {
           where: {
             id: identity.id,
             role: {
-              [Domain.SqlDB.Op.in]: [BackendTypes.Roles.CLIENT]
+              [Domain.SqlDB.Op.in]: [Types.Types.TRoles.CLIENT]
             }
           },
           include: [
@@ -270,7 +270,7 @@ export default class Orders {
             where: {
               id: identity.id,
               role: {
-                [Domain.SqlDB.Op.in]: [BackendTypes.Roles.CLIENT]
+                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.CLIENT]
               }
             },
             include: [
@@ -471,21 +471,21 @@ export default class Orders {
       }
       const includeCoupon: Includeable[] = payload.coupon?.id
         ? [
-          {
-            model: DBModels.CouponModel,
-            required: false,
-            where: {
-              id: payload.coupon?.id,
-              quantity: {
-                [Domain.SqlDB.Op.gt]: 0
+            {
+              model: DBModels.CouponModel,
+              required: false,
+              where: {
+                id: payload.coupon?.id,
+                quantity: {
+                  [Domain.SqlDB.Op.gt]: 0
+                },
+                validity: {
+                  [Domain.SqlDB.Op.gt]: new Date()
+                }
               },
-              validity: {
-                [Domain.SqlDB.Op.gt]: new Date()
-              }
-            },
-            limit: 2
-          }
-        ]
+              limit: 2
+            }
+          ]
         : []
       const userIncludes: Includeable[] = []
       if (Types.Types.TOrderType.DELIVERY === payload.orderType) {
@@ -517,7 +517,7 @@ export default class Orders {
             where: {
               id: identity?.id,
               role: {
-                [Domain.SqlDB.Op.in]: [BackendTypes.Roles.CLIENT]
+                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.CLIENT]
               }
             },
             include: userIncludes
@@ -563,7 +563,7 @@ export default class Orders {
           {
             model: DBModels.PNModel,
             where: {
-              role: BackendTypes.Roles.VENDOR
+              role: Types.Types.TRoles.VENDOR
             },
             required: false
           },
@@ -599,8 +599,8 @@ export default class Orders {
             order.orderType === Types.Types.TOrderType.DELIVERY
               ? order.delivery
               : order.orderType === Types.Types.TOrderType.LOCAL
-                ? Logics.Finances.calcDiscount(order.subtotal ?? 0, order.tip ?? 0, Types.Types.TDiscount.PERCENT)
-                : 0
+              ? Logics.Finances.calcDiscount(order.subtotal ?? 0, order.tip ?? 0, Types.Types.TDiscount.PERCENT)
+              : 0
           ) -
           Number(order.discount)
       )
@@ -685,27 +685,28 @@ export default class Orders {
         }
         if (
           (filteredProduct?.[0]?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            filteredProduct?.[0]?.price ?? 0,
-            filteredProduct?.[0]?.discount ?? 0,
-            filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
-          ) !==
+            Logics.Finances.calcDiscount(
+              filteredProduct?.[0]?.price ?? 0,
+              filteredProduct?.[0]?.discount ?? 0,
+              filteredProduct?.[0]?.discountType ?? Types.Types.TDiscount.NO
+            ) !==
           (product?.price ?? 0) -
-          Logics.Finances.calcDiscount(
-            product?.price ?? 0,
-            product?.discount ?? 0,
-            product?.discountType ?? Types.Types.TDiscount.NO
-          )
+            Logics.Finances.calcDiscount(
+              product?.price ?? 0,
+              product?.discount ?? 0,
+              product?.discountType ?? Types.Types.TDiscount.NO
+            )
         ) {
           throw new Utils.iKomidaError(
             Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_PRICE,
-            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${couponModel
-              ? Logics.Finances.calcDiscount(
-                product.price ?? 0,
-                product?.discount ?? 0,
-                product?.discountType ?? Types.Types.TDiscount.NO
-              )
-              : product.price
+            `${filteredProduct[0].title} => ${filteredProduct[0].price} !== ${
+              couponModel
+                ? Logics.Finances.calcDiscount(
+                    product.price ?? 0,
+                    product?.discount ?? 0,
+                    product?.discountType ?? Types.Types.TDiscount.NO
+                  )
+                : product.price
             }`
           )
         }
@@ -766,7 +767,8 @@ export default class Orders {
           const productOptionModel = filteredProductOptionModel[0]
           if ((productOptionModel?.price ?? 0) !== option.price || option.units > (productOptionModel?.units ?? 0)) {
             this.logger.warn(
-              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${option.price
+              `"productOptionModel?.price !== option.price:", ${productOptionModel?.price} !== ${
+                option.price
               }, "option.units > productOptionModel?.units:", ${option.units} > ${productOptionModel?.units ?? 0}`
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
@@ -952,14 +954,14 @@ export default class Orders {
           const processPaymentRequest = Types.Classes.CProcessPayment.init(
             userCreditCardModel?.id,
             Number(subtotal) +
-            Number(
-              payload.orderType === Types.Types.TOrderType.DELIVERY
-                ? delivery
-                : payload.orderType === Types.Types.TOrderType.LOCAL
+              Number(
+                payload.orderType === Types.Types.TOrderType.DELIVERY
+                  ? delivery
+                  : payload.orderType === Types.Types.TOrderType.LOCAL
                   ? Logics.Finances.calcDiscount(subtotal ?? 0, tip ?? 0, Types.Types.TDiscount.PERCENT)
                   : 0
-            ) -
-            Number(discount),
+              ) -
+              Number(discount),
             orderModel.id
           )
           if ((String(processPaymentRequest?.amount)?.length ?? 0) > 9) {
@@ -1168,7 +1170,7 @@ export default class Orders {
             where: {
               id: identity.id,
               role: {
-                [Domain.SqlDB.Op.in]: [BackendTypes.Roles.CLIENT]
+                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.CLIENT]
               }
             },
             include: [
@@ -1293,8 +1295,8 @@ export default class Orders {
   }
 
   async getOrdersCount(identity: Types.Classes.CUser) {
-    const role = BackendTypes.Roles.valueOf(identity.role)
-    if (!role || ![BackendTypes.Roles.CLIENT].includes(role)) {
+    const role = identity.role
+    if (!role || ![Types.Types.TRoles.CLIENT].includes(role)) {
       return new Utils.Return(true, 0)
     }
     const contractModel = await DBModels.ContractModel.findOne({
@@ -1308,7 +1310,7 @@ export default class Orders {
           where: {
             id: identity.id,
             role: {
-              [Domain.SqlDB.Op.in]: [BackendTypes.Roles.CLIENT]
+              [Domain.SqlDB.Op.in]: [Types.Types.TRoles.CLIENT]
             }
           },
           include: [

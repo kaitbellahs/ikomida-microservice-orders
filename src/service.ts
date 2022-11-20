@@ -25,17 +25,17 @@ app.get('/orders/:timestamp', async (req, res) => {
   // const uri = req?.originalUrl?.split('/')
   // const isHistory = uri?.at(-1) === 'history'
   let payload
-  switch (BackendTypes.Roles.valueOf(identity?.role)) {
-    case BackendTypes.Roles.CLIENT:
+  switch (identity?.role) {
+    case Types.Types.TRoles.CLIENT:
       payload = await user.getOrders(
         identity,
         Number(req.params?.timestamp) ?? 0,
         req.query as Types.Interfaces.IMetadata
       )
       break
-    case BackendTypes.Roles.ADMIN:
-    case BackendTypes.Roles.VENDOR:
-    case BackendTypes.Roles.STAFF:
+    case Types.Types.TRoles.ADMIN:
+    case Types.Types.TRoles.VENDOR:
+    case Types.Types.TRoles.STAFF:
       payload = await vendor.getOrders(
         identity,
         Number(req.params?.timestamp) ?? 0,
@@ -49,13 +49,13 @@ app.get('/orders/:timestamp', async (req, res) => {
 app.get('/order/:id', async (req, res) => {
   const identity: Types.Classes.CUser = Types.Classes.CUser.fromObject(req.headers?.identity)
   let payload
-  switch (BackendTypes.Roles.valueOf(identity?.role)) {
-    case BackendTypes.Roles.CLIENT:
+  switch (identity?.role) {
+    case Types.Types.TRoles.CLIENT:
       payload = await user.getOrder(identity, req.params?.id ?? '')
       break
-    case BackendTypes.Roles.ADMIN:
-    case BackendTypes.Roles.VENDOR:
-    case BackendTypes.Roles.STAFF:
+    case Types.Types.TRoles.ADMIN:
+    case Types.Types.TRoles.VENDOR:
+    case Types.Types.TRoles.STAFF:
       payload = await vendor.getOrder(identity, req.params?.id ?? '')
       break
   }
@@ -65,13 +65,13 @@ app.get('/order/:id', async (req, res) => {
 app.get('/ordersCount', async (req, res) => {
   const identity: Types.Classes.CUser = Types.Classes.CUser.fromObject(req.headers?.identity)
   let payload
-  switch (BackendTypes.Roles.valueOf(identity?.role)) {
-    case BackendTypes.Roles.CLIENT:
+  switch (identity?.role) {
+    case Types.Types.TRoles.CLIENT:
       payload = await user.getOrdersCount(identity)
       break
-    case BackendTypes.Roles.ADMIN:
-    case BackendTypes.Roles.VENDOR:
-    case BackendTypes.Roles.STAFF:
+    case Types.Types.TRoles.ADMIN:
+    case Types.Types.TRoles.VENDOR:
+    case Types.Types.TRoles.STAFF:
       payload = await vendor.getOrdersCount(identity)
       break
   }
@@ -87,13 +87,13 @@ app.post('/order', async (req, res) => {
 app.put('/order', async (req, res) => {
   const identity: Types.Classes.CUser = Types.Classes.CUser.fromObject(req.headers?.identity)
   let payload
-  switch (BackendTypes.Roles.valueOf(identity?.role)) {
-    case BackendTypes.Roles.CLIENT:
+  switch (identity?.role) {
+    case Types.Types.TRoles.CLIENT:
       payload = await user.changeOrderStatus(identity, req.body)
       break
-    case BackendTypes.Roles.ADMIN:
-    case BackendTypes.Roles.VENDOR:
-    case BackendTypes.Roles.STAFF:
+    case Types.Types.TRoles.ADMIN:
+    case Types.Types.TRoles.VENDOR:
+    case Types.Types.TRoles.STAFF:
       payload = await vendor.changeOrderStatus(identity, req.body)
       break
   }
