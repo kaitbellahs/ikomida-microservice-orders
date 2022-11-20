@@ -53,11 +53,11 @@ export default class Orders {
     where =
       timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
         ? {
-          ...where,
-          createdAt: {
-            [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            ...where,
+            createdAt: {
+              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+            }
           }
-        }
         : where
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -70,7 +70,7 @@ export default class Orders {
           where: {
             id: identity.id,
             role: {
-              [Domain.SqlDB.Op.in]: [BackendTypes.Roles.ADMIN, BackendTypes.Roles.VENDOR, BackendTypes.Roles.STAFF]
+              [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
             }
           }
         },
@@ -150,7 +150,7 @@ export default class Orders {
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const user = Types.Classes.CUser.init(
-        '',
+        orderModel.user?.role ?? Types.Types.TRoles.CLIENT,
         orderModel.user?.name ?? '-',
         orderModel.user?.lastName ?? '-',
         orderModel.user?.identity ?? '-',
@@ -299,7 +299,7 @@ export default class Orders {
             where: {
               id: identity.id,
               role: {
-                [Domain.SqlDB.Op.in]: [BackendTypes.Roles.ADMIN, BackendTypes.Roles.VENDOR, BackendTypes.Roles.STAFF]
+                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
               }
             }
           },
@@ -382,7 +382,7 @@ export default class Orders {
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
       const user = Types.Classes.CUser.init(
-        '',
+        orderModel.user?.role ?? Types.Types.TRoles.CLIENT,
         orderModel.user?.name ?? '-',
         orderModel.user?.lastName ?? '-',
         orderModel.user?.identity ?? '-',
@@ -541,7 +541,7 @@ export default class Orders {
             where: {
               id: identity.id,
               role: {
-                [Domain.SqlDB.Op.in]: [BackendTypes.Roles.ADMIN, BackendTypes.Roles.VENDOR, BackendTypes.Roles.STAFF]
+                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
               }
             }
           },
@@ -670,8 +670,8 @@ export default class Orders {
   }
 
   async getOrdersCount(identity: Types.Classes.CUser) {
-    const role = BackendTypes.Roles.valueOf(identity.role)
-    if (!role || ![BackendTypes.Roles.VENDOR, BackendTypes.Roles.STAFF].includes(role)) {
+    const role = identity.role
+    if (!role || ![Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF].includes(role)) {
       return new Utils.Return(true, 0)
     }
     const contractModel = await DBModels.ContractModel.findOne({
@@ -685,7 +685,7 @@ export default class Orders {
           where: {
             id: identity.id,
             role: {
-              [Domain.SqlDB.Op.in]: [BackendTypes.Roles.ADMIN, BackendTypes.Roles.VENDOR, BackendTypes.Roles.STAFF]
+              [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
             }
           }
         },
