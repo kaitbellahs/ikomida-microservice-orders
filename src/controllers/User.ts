@@ -1203,19 +1203,22 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       const orderModel = orders[0]
-      if (
-        (orderModel.status &&
+      if (orderModel.status &&
+        ((
           ![Types.Types.TOrderStatus.WAITING_PAYMENT, Types.Types.TOrderStatus.OPEN].includes(orderModel.status) &&
           Types.Types.TOrderStatus.CANCELED === payload.status) ||
-        (orderModel.status &&
-          ![
-            Types.Types.TOrderStatus.OPEN,
-            Types.Types.TOrderStatus.ACCEPTED,
-            Types.Types.TOrderStatus.WAITING_DELIVERY,
-            Types.Types.TOrderStatus.IN_DELIVERY
-          ].includes(orderModel.status) &&
-          Types.Types.TOrderStatus.DELIVERED === payload.status)
-      ) {
+          (
+            ![
+              Types.Types.TOrderStatus.OPEN,
+              Types.Types.TOrderStatus.ACCEPTED,
+              Types.Types.TOrderStatus.WAITING_DELIVERY,
+              Types.Types.TOrderStatus.IN_DELIVERY,
+              Types.Types.TOrderStatus.IN_TABLE_DELIVERY,
+              Types.Types.TOrderStatus.WAITING_LOCAL,
+              Types.Types.TOrderStatus.WAITING_PICKUP
+            ].includes(orderModel.status) &&
+            Types.Types.TOrderStatus.DELIVERED === payload.status)
+        )) {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS)
         return error.logAndReturn(this.logger)
       }
