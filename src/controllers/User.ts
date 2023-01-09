@@ -783,7 +783,7 @@ export default class Orders {
           throw new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCTS_CONFLICT_1)
         }
         const productModel = filtredProductModels[0]
-
+        let optionsSubtotal = 0
         for (const option of product.options ?? []) {
           const filteredProductOptionModel = productModel.productOptions?.filter(
             productOptionModel => option.id === productOptionModel.id
@@ -799,21 +799,16 @@ export default class Orders {
             )
             throw new Utils.iKomidaError(this.IKOMIDA_ORDERS_SERVICE_NEW_ORDER_PRODUCT_OPTIONS_NOT_EXIST)
           }
-          subtotal +=
-            ((productOptionModel.price ?? 0) -
-              Finances.calcDiscount(
-                productOptionModel.price ?? 0,
-                productModel?.discount ?? 0,
-                productModel?.discountType ?? Types.TDiscount.NO
-              )) *
+          optionsSubtotal +=
+            (productOptionModel.price ?? 0) *
             Number(option?.units) *
             Number(product.quantity)
         }
 
         subtotal +=
-          ((productModel?.price ?? 0) -
+          (optionsSubtotal + (productModel?.price ?? 0) -
             Finances.calcDiscount(
-              productModel.price ?? 0,
+              optionsSubtotal + (productModel.price ?? 0),
               productModel?.discount ?? 0,
               productModel?.discountType ?? Types.TDiscount.NO
             )) *
