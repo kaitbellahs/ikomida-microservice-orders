@@ -1,30 +1,32 @@
-import { Domain, Utils, BackendTypes, Types, Logics, DBModels } from '@ikomida/shared-backend'
+import { Domain, Utils, DBModels } from '@ikomida/shared-backend'
 import { IiKomidaErrorModel } from '@ikomida/shared-backend/lib/src/Utils/iKomidaError'
+import { Finances, Validations } from '@ikomida/shared-logics'
+import { Classes, Interfaces, Types } from '@ikomida/shared-types'
 import PushNotification from '../helpers/PushNotification.js'
 
-const orderOptions: Types.Interfaces.IRecord<string, Types.Types.TOrderType[]> = {
-  [Types.Types.TOrderType.DELIVERY.id]: [
-    Types.Types.TOrderStatus.ACCEPTED,
-    Types.Types.TOrderStatus.WAITING_DELIVERY,
-    Types.Types.TOrderStatus.IN_DELIVERY,
-    Types.Types.TOrderStatus.DELIVERED,
-    Types.Types.TOrderStatus.CANCELED
+const orderOptions: Interfaces.IRecord<string, Types.TOrderType[]> = {
+  [Types.TOrderType.DELIVERY.id]: [
+    Types.TOrderStatus.ACCEPTED,
+    Types.TOrderStatus.WAITING_DELIVERY,
+    Types.TOrderStatus.IN_DELIVERY,
+    Types.TOrderStatus.DELIVERED,
+    Types.TOrderStatus.CANCELED
   ],
-  [Types.Types.TOrderType.LOCAL.id]: [
-    Types.Types.TOrderStatus.ACCEPTED,
-    Types.Types.TOrderStatus.WAITING_LOCAL,
-    Types.Types.TOrderStatus.IN_TABLE_DELIVERY,
-    Types.Types.TOrderStatus.DELIVERED,
-    Types.Types.TOrderStatus.CANCELED
+  [Types.TOrderType.LOCAL.id]: [
+    Types.TOrderStatus.ACCEPTED,
+    Types.TOrderStatus.WAITING_LOCAL,
+    Types.TOrderStatus.IN_TABLE_DELIVERY,
+    Types.TOrderStatus.DELIVERED,
+    Types.TOrderStatus.CANCELED
   ],
-  [Types.Types.TOrderType.PICKUP.id]: [
-    Types.Types.TOrderStatus.ACCEPTED,
-    Types.Types.TOrderStatus.WAITING_PICKUP,
-    Types.Types.TOrderStatus.DELIVERED,
-    Types.Types.TOrderStatus.CANCELED
+  [Types.TOrderType.PICKUP.id]: [
+    Types.TOrderStatus.ACCEPTED,
+    Types.TOrderStatus.WAITING_PICKUP,
+    Types.TOrderStatus.DELIVERED,
+    Types.TOrderStatus.CANCELED
   ]
 }
-const orderFinishedOptions = [Types.Types.TOrderStatus.DELIVERED, Types.Types.TOrderStatus.CANCELED]
+const orderFinishedOptions = [Types.TOrderStatus.DELIVERED, Types.TOrderStatus.CANCELED]
 export default class Orders {
   logger
   limit = 10
@@ -42,20 +44,20 @@ export default class Orders {
     message: 'O pedido não foi localizado.'
   }
 
-  async getOrders(identity: Types.Classes.CUser, timestamp = 0, query?: Types.Interfaces.IMetadata) {
+  async getOrders(identity: Classes.CUser, timestamp = 0, query?: Interfaces.IMetadata) {
     let where = {}
-    const orderType = Types.Types.TOrderType.valueOf(query?.orderType ?? '')
+    const orderType = Types.TOrderType.valueOf(query?.orderType ?? '')
     if (orderType) {
       where = {
         orderType
       }
     }
     where =
-      timestamp && timestamp != 0 && Number(Logics.Finances.toNumber(timestamp)) == timestamp
+      timestamp && timestamp != 0 && Number(Finances.toNumber(timestamp)) == timestamp
         ? {
             ...where,
             createdAt: {
-              [Domain.SqlDB.Op.lt]: new Date(Number(Logics.Finances.toNumber(timestamp)))
+              [Domain.SqlDB.Op.lt]: new Date(Number(Finances.toNumber(timestamp)))
             }
           }
         : where
@@ -70,7 +72,7 @@ export default class Orders {
           where: {
             id: identity.id,
             role: {
-              [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
+              [Domain.SqlDB.Op.in]: [Types.TRoles.ADMIN, Types.TRoles.VENDOR, Types.TRoles.STAFF]
             }
           }
         },
@@ -99,7 +101,7 @@ export default class Orders {
                   attributes: ['id', 'orderType', 'subtotal', 'delivery', 'discount', 'tip'],
                   required: false,
                   where: {
-                    status: Types.Types.TOrderStatus.DELIVERED
+                    status: Types.TOrderStatus.DELIVERED
                   }
                 }
               ]
@@ -149,8 +151,8 @@ export default class Orders {
         order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
-      const user = Types.Classes.CUser.init(
-        orderModel.user?.role ?? Types.Types.TRoles.CLIENT,
+      const user = Classes.CUser.init(
+        orderModel.user?.role ?? Types.TRoles.CLIENT,
         orderModel.user?.name ?? '-',
         orderModel.user?.lastName ?? '-',
         orderModel.user?.identity ?? '-',
@@ -182,7 +184,7 @@ export default class Orders {
         orderModel.orderProducts?.map(orderProduct => {
           const orderProductOptions =
             orderProduct.orderProductOptions?.map(orderProductOption => {
-              return Types.Classes.CProductOption.init(
+              return Classes.CProductOption.init(
                 orderProductOption.name ?? '-',
                 false,
                 orderProductOption.price ?? 0,
@@ -192,11 +194,11 @@ export default class Orders {
                 orderProductOption.productOptionId
               )
             }) ?? []
-          return Types.Classes.CProduct.init(
+          return Classes.CProduct.init(
             orderProduct?.title ?? '-',
             orderProduct?.price ?? 0,
             orderProduct?.discount ?? 0,
-            orderProduct?.discountType ?? Types.Types.TDiscount.NO,
+            orderProduct?.discountType ?? Types.TDiscount.NO,
             orderProduct?.quantity ?? 0,
             undefined,
             undefined,
@@ -216,7 +218,7 @@ export default class Orders {
             orderProduct?.productId
           )
         }) ?? []
-      const address = Types.Classes.CAddress.init(
+      const address = Classes.CAddress.init(
         orderModel.address?.postalCode ?? '-',
         orderModel.address?.street ?? '-',
         orderModel.address?.neighborhood ?? '-',
@@ -230,32 +232,32 @@ export default class Orders {
         orderModel.address?.duration
       )
 
-      const payment = Types.Classes.CPaymentMethod.init(
-        orderModel?.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+      const payment = Classes.CPaymentMethod.init(
+        orderModel?.paymentMethodType ?? Types.TPaymentMethod.CASH_ON_DELIVERY,
         userCreditCard?.brand ?? 'Unknown',
         userCreditCard?.lastDigits ?? '',
         userCreditCard?.firstDigits ?? ''
       )
 
-      const preparation = Types.Classes.COrderPreparation.init(
+      const preparation = Classes.COrderPreparation.init(
         (orderModel?.preparationMin ?? 0) * 60,
         (orderModel?.preparationMax ?? 0) * 60
       )
 
-      const coupon = Types.Classes.CCoupon.init(
+      const coupon = Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
         orderModel.coupon?.minValue ?? 0,
-        orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
+        orderModel?.coupon?.valueType ?? Types.TDiscount.NO
       )
 
-      const order = Types.Classes.COrder.init(
+      const order = Classes.COrder.init(
         orderModel.subtotal ?? 0,
         orderModel.discount ?? 0,
         orderModel.delivery ?? 0,
         products,
         address,
-        orderModel.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+        orderModel.paymentMethodType ?? Types.TPaymentMethod.CASH_ON_DELIVERY,
         preparation,
         coupon,
         orderModel.createdAt,
@@ -264,7 +266,7 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         user,
-        Types.Classes.CLocation.fromObject({
+        Classes.CLocation.fromObject({
           latitude: orderModel?.coordinates?.coordinates?.[0],
           longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
@@ -277,15 +279,15 @@ export default class Orders {
       )
       return order
     })
-    return new Utils.Return(
+    return new Classes.Return(
       true,
       orders?.filter(order => order !== null)?.sort((item1, item2) => (item2?.timestamp ?? 0) - (item1?.timestamp ?? 0))
     )
   }
 
-  async getOrder(identity: Types.Classes.CUser, id: string) {
+  async getOrder(identity: Classes.CUser, id: string) {
     try {
-      if (!Logics.Validations.validateUUID(id)) {
+      if (!Validations.validateUUID(id)) {
         throw new Utils.iKomidaError(this.GET_ORDER_INVALIDE_UUID)
       }
       const contractModel = await DBModels.ContractModel.findOne({
@@ -299,7 +301,7 @@ export default class Orders {
             where: {
               id: identity.id,
               role: {
-                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
+                [Domain.SqlDB.Op.in]: [Types.TRoles.ADMIN, Types.TRoles.VENDOR, Types.TRoles.STAFF]
               }
             }
           },
@@ -327,7 +329,7 @@ export default class Orders {
                     model: DBModels.OrderModel,
                     required: false,
                     where: {
-                      status: Types.Types.TOrderStatus.DELIVERED
+                      status: Types.TOrderStatus.DELIVERED
                     }
                   }
                 ]
@@ -381,8 +383,8 @@ export default class Orders {
         order => Number(order.subtotal) + Number(order.delivery) - Number(order.discount)
       )
       const billing = (ordersTotal?.length ?? 0) > 0 ? ordersTotal?.reduce((a, b) => a + b) : 0
-      const user = Types.Classes.CUser.init(
-        orderModel.user?.role ?? Types.Types.TRoles.CLIENT,
+      const user = Classes.CUser.init(
+        orderModel.user?.role ?? Types.TRoles.CLIENT,
         orderModel.user?.name ?? '-',
         orderModel.user?.lastName ?? '-',
         orderModel.user?.identity ?? '-',
@@ -414,7 +416,7 @@ export default class Orders {
         orderModel.orderProducts?.map(orderProduct => {
           const orderProductOptions =
             orderProduct.orderProductOptions?.map(orderProductOption => {
-              return Types.Classes.CProductOption.init(
+              return Classes.CProductOption.init(
                 orderProductOption.name ?? '-',
                 false,
                 orderProductOption.price ?? 0,
@@ -424,11 +426,11 @@ export default class Orders {
                 orderProductOption.productOptionId
               )
             }) ?? []
-          return Types.Classes.CProduct.init(
+          return Classes.CProduct.init(
             orderProduct?.title ?? '-',
             orderProduct?.price ?? 0,
             orderProduct?.discount ?? 0,
-            orderProduct?.discountType ?? Types.Types.TDiscount.NO,
+            orderProduct?.discountType ?? Types.TDiscount.NO,
             orderProduct?.quantity ?? 0,
             undefined,
             undefined,
@@ -448,7 +450,7 @@ export default class Orders {
             orderProduct?.productId
           )
         }) ?? []
-      const address = Types.Classes.CAddress.init(
+      const address = Classes.CAddress.init(
         orderModel.address?.postalCode ?? '-',
         orderModel.address?.street ?? '-',
         orderModel.address?.neighborhood ?? '-',
@@ -462,32 +464,32 @@ export default class Orders {
         orderModel.address?.duration
       )
 
-      const payment = Types.Classes.CPaymentMethod.init(
-        orderModel?.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+      const payment = Classes.CPaymentMethod.init(
+        orderModel?.paymentMethodType ?? Types.TPaymentMethod.CASH_ON_DELIVERY,
         userCreditCard?.brand ?? 'Unknown',
         userCreditCard?.lastDigits ?? '',
         userCreditCard?.firstDigits ?? ''
       )
 
-      const preparation = Types.Classes.COrderPreparation.init(
+      const preparation = Classes.COrderPreparation.init(
         (orderModel?.preparationMin ?? 0) * 60,
         (orderModel?.preparationMax ?? 0) * 60
       )
 
-      const coupon = Types.Classes.CCoupon.init(
+      const coupon = Classes.CCoupon.init(
         orderModel.coupon?.name ?? '-',
         orderModel.coupon?.value ?? 0,
         orderModel.coupon?.minValue ?? 0,
-        orderModel?.coupon?.valueType ?? Types.Types.TDiscount.NO
+        orderModel?.coupon?.valueType ?? Types.TDiscount.NO
       )
 
-      const order = Types.Classes.COrder.init(
+      const order = Classes.COrder.init(
         orderModel.subtotal ?? 0,
         orderModel.discount ?? 0,
         orderModel.delivery ?? 0,
         products,
         address,
-        orderModel.paymentMethodType ?? Types.Types.TPaymentMethod.CASH_ON_DELIVERY,
+        orderModel.paymentMethodType ?? Types.TPaymentMethod.CASH_ON_DELIVERY,
         preparation,
         coupon,
         orderModel.createdAt,
@@ -496,7 +498,7 @@ export default class Orders {
         orderModel.finishedAt,
         payment,
         user,
-        Types.Classes.CLocation.fromObject({
+        Classes.CLocation.fromObject({
           latitude: orderModel?.coordinates?.coordinates?.[0],
           longitude: orderModel?.coordinates?.coordinates?.[1]
         }),
@@ -507,7 +509,7 @@ export default class Orders {
         orderModel.id,
         orderModel?.createdAt.getTime()
       )
-      return new Utils.Return(true, order)
+      return new Classes.Return(true, order)
     } catch (exception: any) {
       let error: Utils.iKomidaError
       if (exception instanceof Utils.iKomidaError) {
@@ -522,9 +524,9 @@ export default class Orders {
     }
   }
 
-  async changeOrderStatus(identity: Types.Classes.CUser, input: any) {
+  async changeOrderStatus(identity: Classes.CUser, input: any) {
     try {
-      const payload: Types.Classes.COrder = Types.Classes.COrder.fromObject(input)
+      const payload: Classes.COrder = Classes.COrder.fromObject(input)
       if (!payload?.status || !payload?.id) {
         const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WRONG_STATUS)
         return error.logAndReturn(this.logger)
@@ -541,7 +543,7 @@ export default class Orders {
             where: {
               id: identity.id,
               role: {
-                [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
+                [Domain.SqlDB.Op.in]: [Types.TRoles.ADMIN, Types.TRoles.VENDOR, Types.TRoles.STAFF]
               }
             }
           },
@@ -600,8 +602,8 @@ export default class Orders {
       }
       if (
         order.userPayment &&
-        order.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.PAID &&
-        order.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
+        order.userPayment?.status !== Types.TPagSeguroPaymentStatus.PAID &&
+        order.paymentMethodType === Types.TPaymentMethod.CREDIT_CARD_ONLINE
       ) {
         const error = new Utils.iKomidaError(
           Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_CHANGE_ORDER_STATUS_WAITING_PAYMENT
@@ -609,13 +611,13 @@ export default class Orders {
         return error.logAndReturn(this.logger)
       }
       if (
-        payload.status === Types.Types.TOrderStatus.CANCELED &&
+        payload.status === Types.TOrderStatus.CANCELED &&
         order.userPayment &&
-        order.userPayment?.status !== Types.Types.TPagSeguroPaymentStatus.CANCELED &&
-        order.paymentMethodType === Types.Types.TPaymentMethod.CREDIT_CARD_ONLINE
+        order.userPayment?.status !== Types.TPagSeguroPaymentStatus.CANCELED &&
+        order.paymentMethodType === Types.TPaymentMethod.CREDIT_CARD_ONLINE
       ) {
         try {
-          const paymentPayload = new Types.Classes.CAMQPPayload<string>({
+          const paymentPayload = new Classes.CAMQPPayload<string>({
             method: 'cancelPayment',
             object: order.userPayment?.id
           })
@@ -656,9 +658,9 @@ export default class Orders {
         )
         error.log(this.logger)
       }
-      return new Utils.Return(
+      return new Classes.Return(
         true,
-        Types.Classes.COrder.fromObject({ id: order.id, status: order.status, finishedAt: order.finishedAt })
+        Classes.COrder.fromObject({ id: order.id, status: order.status, finishedAt: order.finishedAt })
       )
     } catch (exception: any) {
       const error = new Utils.iKomidaError(
@@ -669,10 +671,10 @@ export default class Orders {
     }
   }
 
-  async getOrdersCount(identity: Types.Classes.CUser) {
+  async getOrdersCount(identity: Classes.CUser) {
     const role = identity.role
-    if (!role || ![Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF].includes(role)) {
-      return new Utils.Return(true, 0)
+    if (!role || ![Types.TRoles.VENDOR, Types.TRoles.STAFF].includes(role)) {
+      return new Classes.Return(true, 0)
     }
     const contractModel = await DBModels.ContractModel.findOne({
       where: {
@@ -685,7 +687,7 @@ export default class Orders {
           where: {
             id: identity.id,
             role: {
-              [Domain.SqlDB.Op.in]: [Types.Types.TRoles.ADMIN, Types.Types.TRoles.VENDOR, Types.Types.TRoles.STAFF]
+              [Domain.SqlDB.Op.in]: [Types.TRoles.ADMIN, Types.TRoles.VENDOR, Types.TRoles.STAFF]
             }
           }
         },
@@ -699,6 +701,6 @@ export default class Orders {
       const error = new Utils.iKomidaError(Utils.iKomidaError.IKOMIDA_ORDERS_SERVICE_GET_ORDERS_COUNT_INVALID_CONTRACT)
       return error.logAndReturn(this.logger)
     }
-    return new Utils.Return(true, contractModel?.orders?.length ?? 0)
+    return new Classes.Return(true, contractModel?.orders?.length ?? 0)
   }
 }
