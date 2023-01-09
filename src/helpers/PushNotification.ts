@@ -1,4 +1,5 @@
-import { Domain, Types, Utils } from '@ikomida/shared-backend'
+import { Domain, Utils } from '@ikomida/shared-backend'
+import { Classes } from '@ikomida/shared-types'
 
 export default class PushNotification {
   logger
@@ -7,24 +8,24 @@ export default class PushNotification {
   }
 
   async sendNotification(
-    input: Types.Classes.CNotification,
+    input: Classes.CNotification,
     orderId?: string,
     contractId?: string,
     userId?: string,
     ...args: any[]
   ) {
-    const notification: Types.Classes.CNotification = Types.Classes.CNotification.fromObject(input)
+    const notification: Classes.CNotification = Classes.CNotification.fromObject(input)
     const managedNotification = new Utils.Notification(notification, ...args)
-    const message = new Types.Classes.CNotificationPayload()
+    const message = new Classes.CNotificationPayload()
     message.notification = managedNotification
-    message.data = new Types.Classes.CNotificationData()
+    message.data = new Classes.CNotificationData()
     message.data.method = managedNotification.method
     message.data.uri = managedNotification.uri
     message.data.logon = managedNotification.logon
     message.data.payload = orderId
-    const payload = new Types.Classes.CAMQPPayload<Types.Classes.CAMQPPayloadObject>()
+    const payload = new Classes.CAMQPPayload<Classes.CAMQPPayloadObject>()
     payload.method = 'send'
-    const payloadObject = new Types.Classes.CAMQPPayloadObject()
+    const payloadObject = new Classes.CAMQPPayloadObject()
     payloadObject.message = message
     payloadObject.contractId = contractId
     if (userId) {
